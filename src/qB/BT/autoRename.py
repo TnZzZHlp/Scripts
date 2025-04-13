@@ -21,9 +21,9 @@ def log(message):
     if LOG_FILE is None and isinstance(log_folder, str):
         if os.path.exists(log_folder):
             # 确保日志文件夹存在
-            os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
+            os.makedirs(os.path.join(log_folder, "qB"), exist_ok=True)
 
-            log_path = os.path.join(log_folder, "backup", "jellyfin.txt")
+            log_path = os.path.join(log_folder, "qB", "autoRename.txt")
             LOG_FILE = open(log_path, "w", encoding="utf-8")
 
     timestamp = time.ctime()
