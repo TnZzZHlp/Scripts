@@ -34,6 +34,7 @@ def log(message):
 
 
 def main():
+    log("开始取消选择小文件")
     # 下载中的种子列表
     torrents = requests.get(
         f"{QB_ADDRESS}/api/v2/torrents/info?filter=downloading"
