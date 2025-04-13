@@ -6,25 +6,34 @@ import tempfile
 import time
 import stat
 
+# 定义全局变量用于存储日志文件描述符
+LOG_FILE = None
+
 
 def log(message):
     """日志记录函数"""
-    # 获取环境变量
+    global LOG_FILE
+
+    # 如果日志文件还未初始化，尝试初始化
     log_folder = os.getenv("LOG_FOLDER")
+    if LOG_FILE is None and isinstance(log_folder, str):
+        if os.path.exists(log_folder):
+            # 确保日志文件夹存在
+            os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
 
-    message = f"{time.ctime()}: {message}"
+            # 以追加模式打开日志文件
+            log_path = os.path.join(log_folder, "backup", "jellyfin.txt")
+            LOG_FILE = open(log_path, "w", encoding="utf-8")
 
-    if isinstance(log_folder, str) and os.path.exists(log_folder):
-        # 确保日志文件夹存在
-        os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
+    timestamp = time.ctime()
+    formatted_message = f"{timestamp}: {message}"
 
-        # 记录日志
-        with open(
-            os.path.join(log_folder, "backup", "qb.txt"), "w", encoding="utf-8"
-        ) as log_file:
-            log_file.write(f"{time.ctime()}: {message}\n")
+    # 写入日志文件
+    if LOG_FILE:
+        LOG_FILE.write(f"{formatted_message}\n")
+        LOG_FILE.flush()  # 立即写入文件
 
-    print(message)
+    print(formatted_message)
 
 
 def set_writable_permissions(path):
