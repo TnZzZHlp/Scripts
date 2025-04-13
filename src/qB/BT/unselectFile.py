@@ -19,7 +19,6 @@ def log(message):
             # 确保日志文件夹存在
             os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
 
-            # 以追加模式打开日志文件
             log_path = os.path.join(log_folder, "backup", "jellyfin.txt")
             LOG_FILE = open(log_path, "w", encoding="utf-8")
 
