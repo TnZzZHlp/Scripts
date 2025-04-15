@@ -126,7 +126,7 @@ def main():
                 "C:/Users/Administrator/scoop/shims/rclone.exe",
                 "copy",
                 compressed_file,
-                "b2:tnzzzhlpbackup/backup/komga/",
+                "b2:tnzzzhlpbackup/komga/",
             ]
         )
         if upload_result.returncode != 0:

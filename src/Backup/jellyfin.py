@@ -136,7 +136,7 @@ def main():
                 "C:/Users/Administrator/scoop/shims/rclone.exe",
                 "copy",
                 compressed_file,
-                "b2:tnzzzhlpbackup/backup/jellyfin/",
+                "b2:tnzzzhlpbackup/jellyfin/",
             ]
         )
         if upload_result.returncode != 0:
