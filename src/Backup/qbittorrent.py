@@ -106,7 +106,7 @@ def main(source_directory, type):
                 "C:/Users/Administrator/scoop/shims/rclone.exe",
                 "copy",
                 compressed_file,
-                f"b2:tnzzzhlpbackup/qbittorrent/{type}/",
+                "b2:tnzzzhlpbackup/qbittorrent/",
             ]
         )
         if upload_result.returncode != 0:
