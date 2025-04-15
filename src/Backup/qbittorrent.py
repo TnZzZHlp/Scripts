@@ -57,13 +57,16 @@ def set_writable_permissions(path):
                 log(f"无法修改文件权限 {file_path}: {e}")
 
 
-def main(source_directory):
+def main(source_directory, type):
+    """
+    source_directory: qBittorrent的配置文件目录
+    type: 备份qBittorrent类型
+    """
     log("开始备份qBittorrent")
     # 获取当前系统的临时文件夹路径
-    timestamp = int(time.time())
-    tmp_folder = os.path.join(tempfile.gettempdir(), f"qbittorrent_backup_{timestamp}")
+    tmp_folder = os.path.join(tempfile.gettempdir(), f"qbittorrent_backup_{type}")
     compressed_file = os.path.join(
-        tempfile.gettempdir(), f"backup_qBittorrent_{timestamp}.7z"
+        tempfile.gettempdir(), f"backup_qBittorrent_{type}.7z"
     )
 
     try:
@@ -103,7 +106,7 @@ def main(source_directory):
                 "C:/Users/Administrator/scoop/shims/rclone.exe",
                 "copy",
                 compressed_file,
-                "b2:tnzzzhlpbackup/qbittorrent/",
+                f"b2:tnzzzhlpbackup/qbittorrent/{type}/",
             ]
         )
         if upload_result.returncode != 0:
@@ -132,13 +135,14 @@ def main(source_directory):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        log("请提供源目录路径作为参数")
+    if len(sys.argv) < 3:
+        log("请提供源目录路径作为参数和备份类型")
         exit(1)
 
     source_directory = sys.argv[1]
+    backup_type = sys.argv[2]
     if not os.path.exists(source_directory):
         log(f"源目录不存在: {source_directory}")
         exit(1)
 
-    main(source_directory)
+    main(source_directory, backup_type)
