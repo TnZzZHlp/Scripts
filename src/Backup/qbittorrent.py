@@ -93,7 +93,7 @@ def main(source_directory, type):
         # 使用7z压缩目录
         log(f"压缩目录到: {compressed_file}")
         compress_result = subprocess.run(
-            ["7z.exe", "a", "-t7z", compressed_file, tmp_folder]
+            ["7z.exe", "a", "-t7z", "-mx9", compressed_file, tmp_folder]
         )
         if compress_result.returncode != 0:
             raise Exception("压缩文件失败")

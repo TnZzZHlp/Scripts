@@ -110,6 +110,7 @@ def main():
                 "C:/Users/Administrator/scoop/shims/7z.exe",
                 "a",
                 "-t7z",
+                "-mx9",
                 compressed_file,
                 tmp_folder,
             ]
