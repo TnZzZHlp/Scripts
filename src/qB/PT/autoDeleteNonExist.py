@@ -3,6 +3,7 @@ import time
 import requests
 
 QB_ADDRESS = "http://192.168.2.10:8080"
+KEYWORD = ["种子已被删除", "torrent not registered with this tracker"]
 
 
 # 定义全局变量用于存储日志文件描述符
@@ -64,12 +65,12 @@ def main():
             trackers_response.raise_for_status()
             trackers_data = trackers_response.json()
 
-            # 检查是否有任何 tracker 有"torrent not registered with this tracker"消息
-            if any(
-                tracker.get("msg") == "torrent not registered with this tracker"
-                for tracker in trackers_data
-            ):
-                torrents_to_delete.append((hash_val, name))
+            # 检查是否有任何 tracker 包含特定消息
+            for tracker in trackers_data:
+                if any(keyword in tracker["msg"] for keyword in KEYWORD):
+                    torrents_to_delete.append((hash_val, name))
+                    break  # 找到一个匹配的 tracker 后跳出循环
+
         except requests.exceptions.RequestException:
             log(f"无法获取种子 {name} 的 tracker 信息")
             continue
@@ -86,6 +87,7 @@ def main():
             # 输出删除信息
             log(f"已删除无效种子: {name}")
         except requests.exceptions.RequestException:
+            log(f"无法删除种子 {name}, 错误代码: {delete_response.status_code}")
             continue
 
 
