@@ -9,6 +9,7 @@ import contextlib
 
 # 定义全局变量用于存储日志文件描述符
 LOG_FILE = None
+BACKUP_TYPE = ""
 
 
 def log(message):
@@ -20,9 +21,9 @@ def log(message):
     if LOG_FILE is None and isinstance(log_folder, str):
         if os.path.exists(log_folder):
             # 确保日志文件夹存在
-            os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
+            os.makedirs(os.path.join(log_folder, "backup", BACKUP_TYPE), exist_ok=True)
 
-            log_path = os.path.join(log_folder, "backup", "qb.txt")
+            log_path = os.path.join(log_folder, "backup", BACKUP_TYPE, "qb.txt")
             LOG_FILE = open(log_path, "w", encoding="utf-8")
 
     timestamp = time.ctime()
@@ -244,6 +245,7 @@ if __name__ == "__main__":
 
     source_directory_arg = sys.argv[1]
     backup_type_arg = sys.argv[2]
+    BACKUP_TYPE = backup_type_arg
 
     # 增加对源目录的检查
     if not os.path.isdir(source_directory_arg):  # 检查是否是目录
