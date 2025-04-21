@@ -5,63 +5,35 @@ import sys
 import tempfile
 import time
 import stat
-import contextlib  # 引入 contextlib 用于更优雅地管理资源
+import contextlib
 
 # 定义全局变量用于存储日志文件描述符
 LOG_FILE = None
-
-
-def initialize_log_file():
-    """尝试初始化日志文件"""
-    global LOG_FILE
-    log_folder = os.getenv("LOG_FOLDER")
-    if LOG_FILE is None and isinstance(log_folder, str):
-        try:
-            if not os.path.exists(log_folder):
-                print(
-                    f"警告: 日志文件夹不存在: {log_folder}"
-                )  # 如果文件夹不存在，打印警告
-                return False  # 初始化失败
-
-            backup_log_dir = os.path.join(log_folder, "backup")
-            os.makedirs(backup_log_dir, exist_ok=True)  # 确保日志文件夹存在
-
-            log_path = os.path.join(backup_log_dir, "qb.txt")
-            LOG_FILE = open(log_path, "w", encoding="utf-8")
-            return True  # 初始化成功
-        except (IOError, OSError, PermissionError) as e:
-            print(f"错误: 无法初始化日志文件 {log_path}: {e}")
-            LOG_FILE = None  # 确保失败时 LOG_FILE 为 None
-            return False  # 初始化失败
-    elif LOG_FILE is not None:
-        return True  # 已经初始化
-    else:
-        # LOG_FOLDER 环境变量未设置或不是字符串
-        print("信息: LOG_FOLDER 环境变量未设置或无效，日志将仅输出到控制台。")
-        return False  # 未初始化
 
 
 def log(message):
     """日志记录函数"""
     global LOG_FILE
 
-    # 每次调用都检查日志文件是否已初始化（或尝试初始化）
-    log_file_initialized = initialize_log_file()
+    # 如果日志文件还未初始化，尝试初始化
+    log_folder = os.getenv("LOG_FOLDER")
+    if LOG_FILE is None and isinstance(log_folder, str):
+        if os.path.exists(log_folder):
+            # 确保日志文件夹存在
+            os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
+
+            log_path = os.path.join(log_folder, "backup", "komga.txt")
+            LOG_FILE = open(log_path, "w", encoding="utf-8")
 
     timestamp = time.ctime()
     formatted_message = f"{timestamp}: {message}"
 
     # 写入日志文件
-    if log_file_initialized and LOG_FILE:
-        try:
-            LOG_FILE.write(f"{formatted_message}\n")
-            LOG_FILE.flush()  # 立即写入文件
-        except (IOError, OSError) as e:
-            # 如果写入失败，打印错误到控制台，并关闭文件句柄避免后续尝试
-            print(f"错误: 写入日志文件失败: {e}")
-            close_log_file()  # 关闭文件
+    if LOG_FILE:
+        LOG_FILE.write(f"{formatted_message}\n")
+        LOG_FILE.flush()  # 立即写入文件
 
-    print(formatted_message)  # 始终打印到控制台
+    print(formatted_message)
 
 
 def close_log_file():
@@ -277,9 +249,5 @@ if __name__ == "__main__":
     if not os.path.isdir(source_directory_arg):  # 检查是否是目录
         print(f"错误: 提供的源路径不是一个有效的目录: {source_directory_arg}")
         exit(1)
-    # 可以在这里添加对 backup_type 的验证，如果需要的话
-
-    # 调用主函数前尝试初始化日志，但不强制要求成功
-    initialize_log_file()
 
     main(source_directory_arg, backup_type_arg)
