@@ -22,7 +22,7 @@ def log(message):
             # 确保日志文件夹存在
             os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
 
-            log_path = os.path.join(log_folder, "backup", "komga.txt")
+            log_path = os.path.join(log_folder, "backup", "qb.txt")
             LOG_FILE = open(log_path, "w", encoding="utf-8")
 
     timestamp = time.ctime()
