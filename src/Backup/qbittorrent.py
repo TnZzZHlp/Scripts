@@ -124,8 +124,7 @@ def main(source_directory, backup_type):
 
     try:
         # 生成临时文件和目录名
-        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-        base_name = f"qbittorrent_backup_{backup_type}_{timestamp_str}"
+        base_name = f"qbittorrent_backup_{backup_type}"
         tmp_folder = os.path.join(tempfile.gettempdir(), base_name)
         compressed_file = os.path.join(tempfile.gettempdir(), f"{base_name}.7z")
 
