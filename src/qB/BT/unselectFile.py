@@ -47,9 +47,9 @@ def main():
         # 获取文件列表
         files = requests.get(f"{QB_ADDRESS}/api/v2/torrents/files?hash={hash}").json()
 
-        # 遍历文件列表，找到大小小于50MB的文件
+        # 遍历文件列表，找到大小小于20MB的文件
         for file in files:
-            if file["size"] < 50 * 1024 * 1024 and file["priority"] != 0:
+            if file["size"] < 20 * 1024 * 1024 and file["priority"] != 0:
                 # 获取index
                 index = file["index"]
 
