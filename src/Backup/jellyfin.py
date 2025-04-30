@@ -63,10 +63,8 @@ def main():
     log("开始备份Jellyfin")
     # 获取当前系统的临时文件夹路径
     timestamp = int(time.time())
-    tmp_folder = os.path.join(tempfile.gettempdir(), f"jellyfin_backup_{timestamp}")
-    compressed_file = os.path.join(
-        tempfile.gettempdir(), f"backup_jellyfin_{timestamp}.7z"
-    )
+    tmp_folder = os.path.join(tempfile.gettempdir(), f"jellyfin_backup")
+    compressed_file = os.path.join(tempfile.gettempdir(), f"backup_jellyfin.7z")
 
     # 判断目标文件夹是否已存在
     if os.path.exists(tmp_folder):
@@ -136,7 +134,7 @@ def main():
                 "C:/Users/Administrator/scoop/shims/rclone.exe",
                 "copy",
                 compressed_file,
-                "b2:tnzzzhlpbackup/backup/jellyfin/",
+                "b2:tnzzzhlpbackup/jellyfin/",
             ]
         )
         if upload_result.returncode != 0:
