@@ -24,7 +24,7 @@ def log(message):
             os.makedirs(os.path.join(log_folder, "backup"), exist_ok=True)
 
             log_path = os.path.join(log_folder, "backup", "komga.txt")
-            LOG_FILE = open(log_path, "w", encoding="utf-8")
+            LOG_FILE = open(log_path, "a", encoding="utf-8")
 
     timestamp = time.ctime()
     formatted_message = f"{timestamp}: {message}"

@@ -22,7 +22,7 @@ def log(message):
             os.makedirs(os.path.join(log_folder, "qB"), exist_ok=True)
 
             log_path = os.path.join(log_folder, "qB", "autoDeleteNonExist.txt")
-            LOG_FILE = open(log_path, "w", encoding="utf-8")
+            LOG_FILE = open(log_path, "a", encoding="utf-8")
 
     timestamp = time.ctime()
     formatted_message = f"{timestamp}: {message}"
@@ -36,7 +36,6 @@ def log(message):
 
 
 def main():
-    log("开始删除无效种子")
     # 定义 API URL
     FETCH_API_URL = f"{QB_ADDRESS}/api/v2/torrents/info"
     TRACKERS_API_URL = f"{QB_ADDRESS}/api/v2/torrents/trackers"

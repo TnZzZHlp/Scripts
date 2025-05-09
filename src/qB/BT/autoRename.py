@@ -24,7 +24,7 @@ def log(message):
             os.makedirs(os.path.join(log_folder, "qB"), exist_ok=True)
 
             log_path = os.path.join(log_folder, "qB", "autoRename.txt")
-            LOG_FILE = open(log_path, "w", encoding="utf-8")
+            LOG_FILE = open(log_path, "a", encoding="utf-8")
 
     timestamp = time.ctime()
     formatted_message = f"{timestamp}: {message}"
@@ -38,7 +38,6 @@ def log(message):
 
 
 def main():
-    log("开始自动重命名")
     # 下载中的种子列表
     torrents = requests.get(
         f"{QB_ADDRESS}/api/v2/torrents/info?filter=downloading"
