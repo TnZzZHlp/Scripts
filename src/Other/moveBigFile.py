@@ -76,10 +76,9 @@ def move_files_to_folders(source_dir):
         filename = os.path.basename(filepath)
         # 确定目标文件夹
         if ny_current_size + filesize <= NY_SIZE_LIMIT_BYTES:
-            print(f"将文件 '{filename}' 移动到 ny 文件夹")
             dest_folder = ny_folder
+            ny_current_size += filesize
         else:
-            print(f"将文件 '{filename}' 移动到 nb 文件夹")
             dest_folder = nb_folder
 
         dest_path = os.path.join(dest_folder, filename)
@@ -96,8 +95,6 @@ def move_files_to_folders(source_dir):
             shutil.move(filepath, dest_path)
             moved_count += 1
 
-            # 更新ny文件夹的当前大小
-            ny_current_size += filesize
             ny_size_gb = ny_current_size / (1024 * 1024 * 1024)
 
         except Exception as e:
