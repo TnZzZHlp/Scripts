@@ -84,12 +84,10 @@ def move_files_to_folders(source_dir):
         # 处理文件名冲突
         filename = os.path.basename(filepath)
         dest_path = os.path.join(dest_folder, filename)
-        counter = 1
 
-        while os.path.exists(dest_path):
-            name, ext = os.path.splitext(filename)
-            dest_path = os.path.join(dest_folder, f"{name}_{counter}{ext}")
-            counter += 1
+        if dest_path == filepath:
+            print(f"文件 '{filename}' 已存在于目标文件夹中，跳过移动")
+            continue
 
         # 移动文件
         try:
