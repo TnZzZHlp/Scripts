@@ -88,23 +88,16 @@ def move_files_to_folders(source_dir):
 
         # 移动文件
         try:
-            filesize_mb = filesize / (1024 * 1024)
-            print(
-                f"正在移动 '{filepath}' ({filesize_mb:.2f} MB) 到 {os.path.basename(dest_folder)}/..."
-            )
             shutil.move(filepath, dest_path)
             moved_count += 1
-
-            ny_size_gb = ny_current_size / (1024 * 1024 * 1024)
+            print(f"\r已移动 {moved_count} 个文件, 总文件数目: {len(sorted_files)}, ")
 
         except Exception as e:
             print(f"移动文件失败 {filepath}: {e}")
 
     # 打印最终统计信息
-    ny_size_gb = ny_current_size / (1024 * 1024 * 1024)
     print(f"\n文件移动完成!")
     print(f"总共移动了 {moved_count} 个文件")
-    print(f"ny文件夹大小: {ny_size_gb:.2f} GB")
     print(f"文件已成功分配到 {ny_folder} 和 {nb_folder}")
 
 
