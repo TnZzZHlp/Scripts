@@ -33,13 +33,6 @@ def get_all_files_sorted_by_size(source_dir):
     print(f"正在扫描目录: {source_dir}")
 
     for root, _, filenames in os.walk(source_dir):
-        root_abs = os.path.abspath(root)
-
-        # 跳过目标子目录，避免处理已移动的文件
-        if (ny_path and root_abs.startswith(ny_path)) or (
-            nb_path and root_abs.startswith(nb_path)
-        ):
-            continue
 
         for filename in filenames:
             filepath = os.path.join(root, filename)
