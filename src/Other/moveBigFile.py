@@ -84,7 +84,6 @@ def move_files_to_folders(source_dir):
         dest_path = os.path.join(dest_folder, filename)
 
         if dest_path == filepath:
-            print(f"文件 '{filename}' 已存在于目标文件夹中，跳过移动")
             continue
 
         # 移动文件
@@ -99,7 +98,6 @@ def move_files_to_folders(source_dir):
             # 更新ny文件夹的当前大小
             ny_current_size += filesize
             ny_size_gb = ny_current_size / (1024 * 1024 * 1024)
-            print(f"ny文件夹当前大小: {ny_size_gb:.2f} GB")
 
         except Exception as e:
             print(f"移动文件失败 {filepath}: {e}")
