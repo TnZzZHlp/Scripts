@@ -75,11 +75,12 @@ def move_files_to_folders(source_dir):
     for filepath, filesize in sorted_files:
         # 确定目标文件夹
         if ny_current_size + filesize <= NY_SIZE_LIMIT_BYTES:
+            print(f"将文件 '{filename}' 移动到 ny 文件夹")
             dest_folder = ny_folder
         else:
+            print(f"将文件 '{filename}' 移动到 nb 文件夹")
             dest_folder = nb_folder
 
-        # 处理文件名冲突
         filename = os.path.basename(filepath)
         dest_path = os.path.join(dest_folder, filename)
 
