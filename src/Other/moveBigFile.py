@@ -15,7 +15,7 @@ NY_SIZE_LIMIT_GB = 24.5
 NY_SIZE_LIMIT_BYTES = NY_SIZE_LIMIT_GB * 1024 * 1024 * 1024
 
 
-def get_all_files_sorted_by_size(source_dir, target_dir=None):
+def get_all_files_sorted_by_size(source_dir):
     """
     递归获取目录下所有文件并按大小降序排序
     参数:
@@ -25,12 +25,10 @@ def get_all_files_sorted_by_size(source_dir, target_dir=None):
     返回: [(文件路径, 文件大小)] 按大小降序排序
     """
     all_files = []
-    ny_path = nb_path = None
 
-    # 如果提供了目标目录，计算ny和nb的绝对路径以便排除
-    if target_dir:
-        ny_path = os.path.abspath(os.path.join(target_dir, "ny"))
-        nb_path = os.path.abspath(os.path.join(target_dir, "nb"))
+    # 确定目标目录
+    ny_path = os.path.join(source_dir, "ny")
+    nb_path = os.path.join(source_dir, "nb")
 
     print(f"正在扫描目录: {source_dir}")
 
@@ -57,14 +55,14 @@ def get_all_files_sorted_by_size(source_dir, target_dir=None):
     return all_files
 
 
-def move_files_to_folders(source_dir, target_dir):
+def move_files_to_folders(source_dir):
     """
     将源目录中的文件移动到目标目录下的ny和nb文件夹中
     ny文件夹大小上限为24.5GB
     """
     # 确保目标目录及其子目录存在
-    ny_folder = os.path.join(target_dir, "ny")
-    nb_folder = os.path.join(target_dir, "nb")
+    ny_folder = os.path.join(source_dir, "ny")
+    nb_folder = os.path.join(source_dir, "nb")
 
     try:
         os.makedirs(ny_folder, exist_ok=True)
@@ -75,7 +73,7 @@ def move_files_to_folders(source_dir, target_dir):
         return
 
     # 获取所有文件并按大小排序
-    sorted_files = get_all_files_sorted_by_size(source_dir, target_dir)
+    sorted_files = get_all_files_sorted_by_size(source_dir)
 
     if not sorted_files:
         print("没有找到需要移动的文件")
@@ -132,7 +130,6 @@ def move_files_to_folders(source_dir, target_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="将文件按大小分配到不同文件夹")
     parser.add_argument("source_dir", help="源目录(包含要移动的文件)")
-    parser.add_argument("target_dir", help="目标目录(将在其中创建ny和nb文件夹)")
 
     args = parser.parse_args()
 
@@ -140,4 +137,6 @@ if __name__ == "__main__":
     if not os.path.isdir(args.source_dir):
         print(f"错误: 源目录 '{args.source_dir}' 不存在")
     else:
-        move_files_to_folders(args.source_dir, args.target_dir)
+        move_files_to_folders(
+            args.source_dir,
+        )
