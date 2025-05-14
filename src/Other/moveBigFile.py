@@ -26,10 +26,6 @@ def get_all_files_sorted_by_size(source_dir):
     """
     all_files = []
 
-    # 确定目标目录
-    ny_path = os.path.join(source_dir, "ny")
-    nb_path = os.path.join(source_dir, "nb")
-
     print(f"正在扫描目录: {source_dir}")
 
     for root, _, filenames in os.walk(source_dir):
