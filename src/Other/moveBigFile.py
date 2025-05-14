@@ -90,7 +90,7 @@ def move_files_to_folders(source_dir):
         try:
             shutil.move(filepath, dest_path)
             moved_count += 1
-            print(f"\r已移动 {moved_count} 个文件, 总文件数目: {len(sorted_files)}, ")
+            print(f"已移动 {moved_count} 个文件, 总文件数目: {len(sorted_files)}, ")
 
         except Exception as e:
             print(f"移动文件失败 {filepath}: {e}")
