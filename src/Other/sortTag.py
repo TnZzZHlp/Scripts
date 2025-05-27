@@ -18,21 +18,31 @@ def get_sort_key(tag_line):
     if not cleaned_tag_content:
         return ""  # 空标签的排序键
 
+    # 特殊字符的拼音首字母映射（如果需要）
+    special_chars = {
+        "长": "c",  # 长沙的长读作cháng
+    }
+
     # 获取每个字符的拼音首字母
     result = []
     for char in cleaned_tag_content:
         if "\u4e00" <= char <= "\u9fff":  # 中文字符
-            # 获取拼音并取首字母
-            char_pinyin = pinyin(char, style=Style.FIRST_LETTER, errors="default")[0][0]
-            result.append(char_pinyin)
+            if char in special_chars:
+                result.append(special_chars[char])
+            else:
+                # 先获取完整拼音，然后取首字母
+                char_pinyin_full = pinyin(char, style=Style.TONE3, errors="default")[0][
+                    0
+                ]
+                # 移除声调数字，取首字母
+                clean_pinyin = "".join(c for c in char_pinyin_full if not c.isdigit())
+                if clean_pinyin:
+                    result.append(clean_pinyin[0].lower())
         else:
-            # 非中文字符直接添加
-            result.append(char)
+            # 非中文字符直接添加并转换为小写
+            result.append(char.lower())
 
-    sort_key_string = "".join(result).lower()
-
-    # 调试输出：显示原标签和对应的排序键
-    print(f"调试: '{cleaned_tag_content}' -> 排序键: '{sort_key_string}'")
+    sort_key_string = "".join(result)
 
     return sort_key_string
 
@@ -57,11 +67,10 @@ def sort_tags_from_file(file_path):
         print("文件中没有找到标签。")
         return
 
-    print("生成排序键：")
-    # 使用自定义的get_sort_key函数对原始标签列表进行排序
+    # 排序
     sorted_tags = sorted(tags, key=get_sort_key)
 
-    print("\n排序后的标签：")
+    print("排序后的标签：")
     for tag in sorted_tags:
         print(tag)
 
