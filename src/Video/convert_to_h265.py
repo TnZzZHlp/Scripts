@@ -45,7 +45,7 @@ def convert_to_h265(input_file, use_intel=False):
             "-q",
             "23",  # 质量控制参数 (对应于CRF)
             "-preset",
-            "medium",  # 编码速度预设
+            "fast",  # 编码速度预设
             "-load_plugin",
             "hevc_hw",  # 加载HEVC硬件编码插件
         ]
