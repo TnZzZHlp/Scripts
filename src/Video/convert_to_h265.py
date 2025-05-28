@@ -70,9 +70,8 @@ def convert_to_h265(input_file):
                 if "frame=" in line or "speed=" in line or "error" in line.lower():
                     print(f"\r{line.strip()}", end="")
 
-                    # 如果用户需要了解转码速度，可以取消下面注释
-                    # if "speed=" in line:
-                    #     explain_encoding_speed(line)
+                    if "speed=" in line:
+                        explain_encoding_speed(line)
         else:
             # 如果无法获取输出流，提供一个替代方案
             print("正在处理中，请等待...")
