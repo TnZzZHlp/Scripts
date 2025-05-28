@@ -34,6 +34,10 @@ def convert_to_h265(input_file):
         "-i",
         input_file,
         "-c:v",
+        "-preset",
+        "fast",  # 或 "faster", "veryfast"
+        "-c:v",
+        "hevc_qsv",
         "libx265",  # 视频编码器设为H.265
         "-crf",
         "23",  # 恒定速率因子 - 控制质量 (低值=高质量)
@@ -65,6 +69,10 @@ def convert_to_h265(input_file):
                 # 仅显示包含关键字的行以减少输出量
                 if "frame=" in line or "speed=" in line or "error" in line.lower():
                     print(f"\r{line.strip()}", end="")
+
+                    # 如果用户需要了解转码速度，可以取消下面注释
+                    # if "speed=" in line:
+                    #     explain_encoding_speed(line)
         else:
             # 如果无法获取输出流，提供一个替代方案
             print("正在处理中，请等待...")
@@ -89,6 +97,38 @@ def convert_to_h265(input_file):
     except Exception as e:
         print(f"发生错误: {str(e)}")
         return False
+
+
+def explain_encoding_speed(progress_line):
+    """解释FFmpeg的转码速度"""
+    try:
+        # 尝试从输出行中提取速度值
+        speed_part = progress_line.split("speed=")[1].split(" ")[0]
+        speed_value = float(speed_part.replace("x", ""))
+
+        print("\n\n转码速度分析:")
+        print(f"当前速度: {speed_value}x (实时速度的{speed_value*100:.1f}%)")
+
+        if speed_value < 0.2:
+            print(
+                "这是一个较慢的转码速度。处理1分钟视频需要约{:.1f}分钟。".format(
+                    1 / speed_value
+                )
+            )
+            print("\n提升速度的建议:")
+            print("1. 使用更快的预设: 将-preset参数从'medium'改为'faster'或'fast'")
+            print("2. 增加CRF值(降低质量): 将-crf参数从23改为26-28")
+            print("3. 如果硬件支持，启用硬件加速转码:")
+            print("   - 对于NVIDIA GPU: 使用-c:v hevc_nvenc")
+            print("   - 对于Intel GPU: 使用-c:v hevc_qsv")
+            print("   - 对于AMD GPU: 使用-c:v hevc_amf")
+            print("4. 减小输出分辨率: 添加-vf scale=1280:-1参数")
+        elif speed_value < 0.5:
+            print("这是一个中等的转码速度。")
+        else:
+            print("这是一个较好的转码速度。")
+    except:
+        pass  # 如果解析失败，不显示额外信息
 
 
 if __name__ == "__main__":
