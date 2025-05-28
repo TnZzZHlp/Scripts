@@ -33,11 +33,11 @@ def convert_to_h265(input_file):
         "ffmpeg",
         "-i",
         input_file,
-        "-c:v",
         "-preset",
         "fast",  # 或 "faster", "veryfast"
         "-c:v",
         "hevc_qsv",
+        "-c:v",
         "libx265",  # 视频编码器设为H.265
         "-crf",
         "23",  # 恒定速率因子 - 控制质量 (低值=高质量)
