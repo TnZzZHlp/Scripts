@@ -14,7 +14,15 @@ import subprocess
 import sys
 
 
-def convert_to_h265(input_file, use_intel=False, use_amd=False, use_nvidia=False):
+def convert_to_h265(
+    input_file,
+    use_intel=False,
+    use_amd=False,
+    use_nvidia=False,
+    crf=23,
+    preset="medium",
+    bitrate=None,
+):
     """
     使用ffmpeg将视频转码为H.265格式
 
@@ -34,60 +42,80 @@ def convert_to_h265(input_file, use_intel=False, use_amd=False, use_nvidia=False
     file_name, file_ext = os.path.splitext(os.path.basename(input_file))
     output_file = os.path.join(file_dir, f"{file_name}_h265{file_ext}")
 
-    # 构建ffmpeg命令
+    # 将 Windows 路径反斜杠改为正斜杠，避免 \0 被误识别
+    input_file = input_file.replace("\\", "/")
+    output_file = output_file.replace("\\", "/")
+
+    # 构建 ffmpeg 命令
     ffmpeg_cmd = [
         "ffmpeg",
+        "-y",  # 如果目标已存在则强制覆盖
         "-i",
         input_file,
     ]
 
-    # 硬件加速选择
+    # 硬件／软件编码选择
     if use_intel:
-        # Intel QuickSync
         ffmpeg_cmd.extend(
             [
                 "-c:v",
                 "hevc_qsv",  # Intel QuickSync HEVC/H.265编码器
+                "-global_quality",
+                str(crf),  # QSV 对应的质量参数
                 "-preset",
-                "fast",  # 编码速度预设
-                "-load_plugin",
-                "hevc_hw",  # 加载HEVC硬件编码插件
+                preset,
             ]
         )
     elif use_amd:
-        # AMD AMF
+        # 将 --preset 映射到 AMF 的 quality 参数
+        amf_quality = {
+            "ultrafast": "speed",
+            "fast": "speed",
+            "medium": "balanced",
+            "slow": "quality",
+            "slower": "quality",
+            "veryslow": "quality",
+        }.get(preset, "balanced")
+
         ffmpeg_cmd.extend(
             [
                 "-c:v",
                 "hevc_amf",  # AMD HEVC/H.265编码器
+                "-rc",
+                "cqp",  # AMF 使用 CQP 模式
+                "-qp",
+                str(crf),  # AMF 的质量参数
                 "-quality",
-                "balanced",  # 质量设置
+                amf_quality,  # AMF 支持的 quality 选项
             ]
         )
     elif use_nvidia:
-        # NVIDIA NVENC
         ffmpeg_cmd.extend(
             [
                 "-c:v",
                 "hevc_nvenc",  # NVIDIA NVENC H.265编码器
-                "-preset",
-                "fast",  # NVENC编码预设
                 "-cq",
-                "23",  # 恒定质量
+                str(crf),  # NVENC 的质量参数
+                "-preset",
+                preset,
             ]
         )
     else:
-        # 软件 x265
+        # 软件 x265 编码
         ffmpeg_cmd.extend(
             [
                 "-c:v",
                 "libx265",  # 软件x265编码器
                 "-crf",
-                "23",  # 质量控制参数 (对应于CRF)
+                str(crf),
                 "-preset",
-                "medium",  # 编码速度预设
+                preset,
             ]
         )
+
+    # 如果指定了固定码率，则覆盖质量参数
+    if bitrate:
+        ffmpeg_cmd.extend(["-b:v", bitrate])
 
     # 添加通用的编码参数
     ffmpeg_cmd.extend(
@@ -105,6 +133,7 @@ def convert_to_h265(input_file, use_intel=False, use_amd=False, use_nvidia=False
     print("转码中，请稍候...")
 
     try:
+
         # 执行ffmpeg命令
         process = subprocess.Popen(
             ffmpeg_cmd,
@@ -164,9 +193,34 @@ if __name__ == "__main__":
         help="使用 NVIDIA NVENC 硬件加速",
     )
 
+    # 新增质量/码率可调参数
+    parser.add_argument(
+        "--crf",
+        type=int,
+        default=23,
+        help="质量参数（CRF或等效值，数值越大文件越小）",
+    )
+    parser.add_argument(
+        "--preset",
+        default="medium",
+        choices=[
+            "ultrafast",
+            "fast",
+            "medium",
+            "slow",
+            "slower",
+            "veryslow",
+        ],
+        help="编码preset",
+    )
+    parser.add_argument(
+        "--bitrate",
+        help="目标码率，如2000k，优先于CRF/质量参数",
+    )
+
     args = parser.parse_args()
     if sum(bool(x) for x in (args.intel, args.amd, args.nvidia)) > 1:
-        print("错误: 只能指定其中一个硬件加速选项")
+        print("错误: 只能指定一个硬件加速选项")
         sys.exit(1)
 
     convert_to_h265(
@@ -174,4 +228,7 @@ if __name__ == "__main__":
         use_intel=args.intel,
         use_amd=args.amd,
         use_nvidia=args.nvidia,
+        crf=args.crf,
+        preset=args.preset,
+        bitrate=args.bitrate,
     )
