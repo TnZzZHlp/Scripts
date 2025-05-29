@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 将视频文件转码为H.265编码。
-用法: python convert_to_h265.py <视频文件路径> [--intel]
+用法: python convert_to_h265.py <视频文件路径> [--intel] [--amd] [--nvidia]
 使用 --intel 参数启用 Intel QuickSync 硬件加速
+使用 --amd 参数启用 AMD AMF 硬件加速
+使用 --nvidia 参数启用 NVIDIA NVENC 硬件加速
 """
 
 import argparse
@@ -12,13 +14,15 @@ import subprocess
 import sys
 
 
-def convert_to_h265(input_file, use_intel=False):
+def convert_to_h265(input_file, use_intel=False, use_amd=False, use_nvidia=False):
     """
     使用ffmpeg将视频转码为H.265格式
 
     参数:
         input_file: 输入视频文件路径
         use_intel: 是否使用Intel QuickSync硬件加速
+        use_amd: 是否使用AMD AMF硬件加速
+        use_nvidia: 是否使用NVIDIA NVENC硬件加速
     """
     # 检查文件是否存在
     if not os.path.isfile(input_file):
@@ -37,19 +41,53 @@ def convert_to_h265(input_file, use_intel=False):
         input_file,
     ]
 
-    # 使用Intel QuickSync硬件加速进行H.265编码
-    ffmpeg_cmd.extend(
-        [
-            "-c:v",
-            "hevc_qsv",  # Intel QuickSync HEVC/H.265编码器
-            "-q",
-            "23",  # 质量控制参数 (对应于CRF)
-            "-preset",
-            "fast",  # 编码速度预设
-            "-load_plugin",
-            "hevc_hw",  # 加载HEVC硬件编码插件
-        ]
-    )
+    # 硬件加速选择
+    if use_intel:
+        # Intel QuickSync
+        ffmpeg_cmd.extend(
+            [
+                "-c:v",
+                "hevc_qsv",  # Intel QuickSync HEVC/H.265编码器
+                "-preset",
+                "fast",  # 编码速度预设
+                "-load_plugin",
+                "hevc_hw",  # 加载HEVC硬件编码插件
+            ]
+        )
+    elif use_amd:
+        # AMD AMF
+        ffmpeg_cmd.extend(
+            [
+                "-c:v",
+                "hevc_amf",  # AMD HEVC/H.265编码器
+                "-quality",
+                "balanced",  # 质量设置
+            ]
+        )
+    elif use_nvidia:
+        # NVIDIA NVENC
+        ffmpeg_cmd.extend(
+            [
+                "-c:v",
+                "hevc_nvenc",  # NVIDIA NVENC H.265编码器
+                "-preset",
+                "fast",  # NVENC编码预设
+                "-cq",
+                "23",  # 恒定质量
+            ]
+        )
+    else:
+        # 软件 x265
+        ffmpeg_cmd.extend(
+            [
+                "-c:v",
+                "libx265",  # 软件x265编码器
+                "-crf",
+                "23",  # 质量控制参数 (对应于CRF)
+                "-preset",
+                "medium",  # 编码速度预设
+            ]
+        )
 
     # 添加通用的编码参数
     ffmpeg_cmd.extend(
@@ -113,8 +151,27 @@ if __name__ == "__main__":
     parser.add_argument(
         "--intel",
         action="store_true",
-        help="使用Intel QuickSync硬件加速 (需要Intel支持的CPU/GPU)",
+        help="使用 Intel QuickSync硬件加速",
+    )
+    parser.add_argument(
+        "--amd",
+        action="store_true",
+        help="使用 AMD GPU 硬件加速",
+    )
+    parser.add_argument(
+        "--nvidia",
+        action="store_true",
+        help="使用 NVIDIA NVENC 硬件加速",
     )
 
     args = parser.parse_args()
-    convert_to_h265(args.input_file, args.intel)
+    if sum(bool(x) for x in (args.intel, args.amd, args.nvidia)) > 1:
+        print("错误: 只能指定其中一个硬件加速选项")
+        sys.exit(1)
+
+    convert_to_h265(
+        args.input_file,
+        use_intel=args.intel,
+        use_amd=args.amd,
+        use_nvidia=args.nvidia,
+    )
