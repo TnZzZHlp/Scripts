@@ -12,6 +12,11 @@ import argparse
 import os
 import subprocess
 import sys
+import signal
+import atexit
+
+# 全局进程跟踪列表
+running_processes = []
 
 
 def convert_to_h265(
@@ -132,6 +137,7 @@ def convert_to_h265(
     print(f"输出文件: {output_file}")
     print("转码中，请稍候...")
 
+    global running_processes
     try:
 
         # 执行ffmpeg命令
@@ -141,6 +147,7 @@ def convert_to_h265(
             stderr=subprocess.STDOUT,
             universal_newlines=True,
         )
+        running_processes.append(process)
 
         # 安全地处理并显示进度信息
         if process.stdout:  # 确保stdout不是None
@@ -174,7 +181,35 @@ def convert_to_h265(
         return False
 
 
+def terminate_processes():
+    global running_processes
+    """终止所有运行的ffmpeg进程"""
+    for proc in running_processes:
+        try:
+            if proc.poll() is None:  # 进程仍在运行
+                proc.terminate()  # 先尝试温和终止
+                proc.wait(timeout=3)  # 等待3秒
+                if proc.poll() is None:
+                    proc.kill()  # 强制终止
+        except Exception as e:
+            print(f"终止进程时发生错误: {str(e)}")
+
+
+def signal_handler(signum, frame):
+    """信号处理函数"""
+    print(f"\n接收到信号 {signum}, 正在终止ffmpeg进程...")
+    terminate_processes()
+    sys.exit(1)
+
+
 if __name__ == "__main__":
+    # 注册退出处理
+    atexit.register(terminate_processes)
+
+    # 注册信号处理
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # 终止信号
+
     parser = argparse.ArgumentParser(description="将视频转码为H.265格式")
     parser.add_argument("input_file", help="输入视频文件路径")
     parser.add_argument(
