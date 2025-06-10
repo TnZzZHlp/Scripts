@@ -225,7 +225,7 @@ async def async_main(resources, output_folder):
     tasks = []
     async with aiohttp.ClientSession(
         connector=ProxyConnector.from_url(PROXY),
-        timeout=aiohttp.ClientTimeout(total=0, sock_read=30),
+        timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
     ) as session:
         for resource in resources:
             tasks.append(
