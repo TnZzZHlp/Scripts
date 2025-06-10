@@ -25,6 +25,7 @@ logging.basicConfig(
 def parse_artist_url(url: str) -> list:
     """
     解析 Kemono Artist 的 URL，提取出 所有资源页面url。
+    支持分页加载所有内容。
     """
 
     # 判断是否是 Kemono 还是 Coomer
@@ -35,37 +36,62 @@ def parse_artist_url(url: str) -> list:
     global DOMAIN
     DOMAIN = url.split("/")[2]
     parts = "/".join(url.split("/")[-3:])
-    if "kemono" in DOMAIN:
-        resource_url = f"https://{DOMAIN}/api/v1/{parts}/posts-legacy"
-    elif "coomer" in DOMAIN:
-        resource_url = f"https://{DOMAIN}/api/v1/{parts}/posts-legacy"
-    else:
-        raise ValueError("URL 必须是 Kemono 或 Coomer 的 Artist 页面。")
 
-    response = requests.get(
-        resource_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
-        },
-    )
-    if response.status_code != 200:
-        raise ValueError("无法访问该 URL 或该页面不存在。")
+    # 初始化变量
+    all_ids = []
+    offset = 0
+    page_size = 50  # API默认每页返回50条记录
+    total_count = None
 
-    # 获取 Set-Cookie
-    global COOKIES
-    COOKIES = dict(response.cookies)
+    # 循环获取所有页面的内容
+    while True:
+        if "kemono" in DOMAIN or "coomer" in DOMAIN:
+            resource_url = f"https://{DOMAIN}/api/v1/{parts}/posts-legacy?o={offset}"
+        else:
+            raise ValueError("URL 必须是 Kemono 或 Coomer 的 Artist 页面。")
 
-    json = response.json()
+        logging.info(f"正在获取页面，偏移量: {offset}")
+        response = requests.get(
+            resource_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
+            },
+        )
 
-    # 拿到所有的id
-    ids = [item["id"] for item in json["results"]]
+        if response.status_code != 200:
+            raise ValueError(f"无法访问 {resource_url} 或该页面不存在。")
+
+        json_data = response.json()
+
+        # 获取总数，只在第一次请求时设置
+        if (
+            total_count is None
+            and "props" in json_data
+            and "count" in json_data["props"]
+        ):
+            total_count = json_data["props"]["count"]
+            logging.info(f"共有 {total_count} 个资源需要获取")
+
+        # 获取当前页的ID
+        current_page_ids = [item["id"] for item in json_data["results"]]
+        all_ids.extend(current_page_ids)
+
+        # 如果这一页没有返回任何结果或者已经获取了所有内容，则退出循环
+        if not current_page_ids or (
+            total_count is not None and len(all_ids) >= total_count
+        ):
+            break
+
+        # 增加偏移量，继续获取下一页
+        offset += page_size
+
+    logging.info(f"共获取到 {len(all_ids)} 个资源ID")
 
     # 获取所有资源的详细信息
     resource_details = []
     # 进度条
-    pbar = tqdm(total=len(ids))
-    for id in ids:
-        logging.info(f"正在获取资源 ID: {id}")
+    pbar = tqdm(total=len(all_ids))
+    for id in all_ids:
         get_detail(id, parts, resource_details)
         pbar.set_description(f"正在获取 {id} 信息")
         pbar.update(1)
