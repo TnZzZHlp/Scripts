@@ -1,10 +1,11 @@
 [project]
-name = "scripts"
-version = "0.1.0"
+dependencies = [
+  "beautifulsoup4>=4.13.4",
+  "pypinyin>=0.54.0",
+  "requests>=2.32.3",
+]
 description = "Add your description here"
+name = "scripts"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "pypinyin>=0.54.0",
-    "requests>=2.32.3",
-]
+version = "0.1.0"
