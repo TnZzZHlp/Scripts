@@ -1,9 +1,8 @@
 import argparse
 import aiohttp
-from aiohttp_socks import ProxyConnector
 import requests
 import asyncio
-from aiohttp_socks5 import SOCKSConnector
+from aiohttp_socks import ProxyType, ProxyConnector, ChainProxyConnector
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
