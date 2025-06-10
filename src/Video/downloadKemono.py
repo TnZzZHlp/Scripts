@@ -1,12 +1,13 @@
 import argparse
 import aiohttp
+from aiohttp_socks import ProxyConnector
 import requests
 import asyncio
 from aiohttp_socks5 import SOCKSConnector
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-PROXY = "socks5://192.168.2.1:7890"
+PROXY = ProxyConnector.from_url("socks5://192.168.2.1:7890")
 
 
 def parse_artist_url(url: str) -> list:
@@ -72,13 +73,12 @@ async def download_file(result, output_folder: str):
         print(f"正在下载视频: {url}")
 
         try:
-            async with aiohttp.ClientSession(connector=SOCKSConnector()) as session:
+            async with aiohttp.ClientSession(connector=PROXY) as session:
                 async with session.get(
                     url,
                     headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
                     },
-                    proxy=PROXY,
                 ) as response:
                     if response.status != 200:
                         raise ValueError("无法下载视频。")
@@ -131,13 +131,12 @@ async def download_attachments(result, output_folder: str):
             print(f"正在下载附件: {url}")
 
             try:
-                async with aiohttp.ClientSession(connector=SOCKSConnector()) as session:
+                async with aiohttp.ClientSession(connector=PROXY) as session:
                     async with session.get(
                         url,
                         headers={
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
                         },
-                        proxy=PROXY,
                     ) as response:
                         if response.status != 200:
                             print(f"无法下载附件: {url}")

@@ -46,11 +46,16 @@ wheels = [
 ]
 
 [[package]]
-name = "aiohttp-socks5"
-version = "0.0.1"
-source = { git = "https://github.com/HMaker/aiohttp-socks5.git?rev=latest#4a4c3d57ddf48d367d9f23e0e1f03687df00c121" }
+name = "aiohttp-socks"
+version = "0.10.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
+    { name = "python-socks" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/25/c0/dfc948c2aff58db2846192d744dc889bd634b9f3cc7d0fca85ef3c7e9cd4/aiohttp_socks-0.10.1.tar.gz", hash = "sha256:49f2e1f8051f2885719beb1b77e312b5a27c3e4b60f0b045a388f194d995e068", size = 10445, upload-time = "2024-12-26T07:06:26.244Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/04/7ff144f7465e83cf87459ffd74688871918496acd4816507cca1af5623d3/aiohttp_socks-0.10.1-py3-none-any.whl", hash = "sha256:6fd4d46c09f952f971a011ff446170daab8d539cf5310c0627f8423df2fb15ea", size = 10119, upload-time = "2024-12-26T07:06:22.236Z" },
 ]
 
 [[package]]
@@ -264,6 +269,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-socks"
+version = "2.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/56/a21c65c9968fbdb442b177a4f6f42d150c4bc66c179606193ee86e5b5dc5/python_socks-2.7.1.tar.gz", hash = "sha256:f1a0bb603830fe81e332442eada96757b8f8dec02bd22d1d6f5c99a79704c550", size = 230371, upload-time = "2025-02-01T18:16:32.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/a5/8bc495f162f6ff6a805a0bd558312db2cc8d6aa6279324ba8180af64f777/python_socks-2.7.1-py3-none-any.whl", hash = "sha256:2603c6454eeaeb82b464ad705be188989e8cf1a4a16f0af3c921d6dd71a49cec", size = 54980, upload-time = "2025-02-01T18:16:30.232Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.32.3"
 source = { registry = "https://pypi.org/simple" }
@@ -284,7 +298,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "aiohttp-socks5" },
+    { name = "aiohttp-socks" },
     { name = "beautifulsoup4" },
     { name = "pypinyin" },
     { name = "requests" },
@@ -293,7 +307,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.12" },
-    { name = "aiohttp-socks5", git = "https://github.com/HMaker/aiohttp-socks5.git?rev=latest" },
+    { name = "aiohttp-socks", specifier = ">=0.10.1" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "pypinyin", specifier = ">=0.54.0" },
     { name = "requests", specifier = ">=2.32.3" },
