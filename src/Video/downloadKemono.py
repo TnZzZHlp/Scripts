@@ -155,7 +155,6 @@ async def download_file(result, output_folder: str, session):
                 # 如果已经下载了部分文件，添加Range头
                 if downloaded_size > 0:
                     headers["Range"] = f"bytes={downloaded_size}-"
-                    logging.info(f"从字节 {downloaded_size} 继续下载: {url}")
 
                 async with session.get(
                     url,
