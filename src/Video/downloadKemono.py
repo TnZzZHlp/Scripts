@@ -5,6 +5,7 @@ import requests
 from aiohttp_socks import ProxyConnector
 import asyncio
 import logging
+from tqdm.asyncio import tqdm
 
 from tenacity import retry, stop_after_attempt
 
@@ -87,6 +88,8 @@ async def download_file(result, output_folder: str, session):
     下载视频并保存到指定文件夹。
     """
 
+    url = ""
+
     # 获取限制
     async with SEM:
         try:
@@ -109,7 +112,6 @@ async def download_file(result, output_folder: str, session):
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                     },
                 ) as response:
-                    logging.info(f"正在下载视频: {url}")
                     if response.status != 200:
                         raise ValueError(f"无法下载视频。{response.status}")
 
@@ -124,9 +126,18 @@ async def download_file(result, output_folder: str, session):
                         return
 
                     chunk_size = 4 * 1024 * 1024  # 4MB 是视频下载的良好平衡点
+                    progress = tqdm(
+                        total=file_size,
+                        unit="B",
+                        unit_scale=True,
+                        desc=f"下载 {filename}",
+                        ascii=True,
+                    )
                     with open(output_path, "wb") as file:
                         async for chunk in response.content.iter_chunked(chunk_size):
                             file.write(chunk)
+                            progress.update(len(chunk))
+                    progress.close()
 
                     # 检查下载是否完整
                     if file_size and os.path.getsize(output_path) != file_size:
@@ -137,7 +148,7 @@ async def download_file(result, output_folder: str, session):
                     logging.info(f"视频已保存到: {output_path}")
 
         except Exception as e:
-            logging.exception("下载失败")  # 这会自动记录完整堆栈
+            logging.error(f"下载失败 URL: {url} - 错误: {e}")
 
 
 # 2. 创建异步主函数并修复任务调度
