@@ -51,33 +51,47 @@ async def download_file(result, output_folder: str):
         if "file" not in result or "path" not in result["file"]:
             raise ValueError("结果中没有找到视频文件信息。")
 
+        # 确保输出文件夹存在
+        import os
+
+        if not os.path.exists(f"{output_folder}/videos/"):
+            os.makedirs(f"{output_folder}/videos/")
+
+        filename = result["file"]["name"]
+        output_path = f"{output_folder}/videos/{filename}"
+
+        # 判断输出文件夹是否已经有该文件
+        if os.path.exists(output_path):
+            print(f"视频已存在，跳过下载: {output_path}")
+            return
+
         url = f"https://{DOMAIN}{result['file']['path']}"
 
         print(f"正在下载视频: {url}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
-                },
-            ) as response:
-                if response.status != 200:
-                    raise ValueError("无法下载视频。")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
+                    },
+                ) as response:
+                    if response.status != 200:
+                        raise ValueError("无法下载视频。")
 
-                # 确保输出文件夹存在
-                import os
+                    with open(output_path, "wb") as file:
+                        # 每次读取1MB
+                        chunk_size = 1024 * 1024
+                        while True:
+                            chunk = await response.content.read(chunk_size)
+                            if not chunk:
+                                break
+                            file.write(chunk)
 
-                if not os.path.exists(f"{output_folder}/videos/"):
-                    os.makedirs(f"{output_folder}/videos/")
-
-                filename = result["file"]["name"]
-                output_path = f"{output_folder}/videos/{filename}"
-
-                with open(output_path, "wb") as file:
-                    file.write(await response.read())
-
-                print(f"视频已保存到: {output_path}")
+                    print(f"视频已保存到: {output_path}")
+        except Exception as e:
+            print(f"下载视频时出错: {e}")
 
 
 async def download_attachments(result, output_folder: str):
@@ -96,33 +110,47 @@ async def download_attachments(result, output_folder: str):
                 print("附件信息不完整，跳过。")
                 continue
 
+            # 确保附件输出文件夹存在
+            attachments_folder = f"{output_folder}/attachments"
+            import os
+
+            if not os.path.exists(attachments_folder):
+                os.makedirs(attachments_folder)
+            filename = attachment["file"]["name"]
+            output_path = f"{attachments_folder}/{filename}"
+
+            # 判断输出文件夹是否已经有该文件
+            if os.path.exists(output_path):
+                print(f"附件已存在，跳过下载: {output_path}")
+                continue
+
             url = f"https://{DOMAIN}{attachment['file']['path']}"
             print(f"正在下载附件: {url}")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
-                    },
-                ) as response:
-                    if response.status != 200:
-                        print(f"无法下载附件: {url}")
-                        continue
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        url,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
+                        },
+                    ) as response:
+                        if response.status != 200:
+                            print(f"无法下载附件: {url}")
+                            continue
 
-                    # 确保附件输出文件夹存在
-                    attachments_folder = f"{output_folder}/attachments"
-                    import os
+                        with open(output_path, "wb") as file:
+                            # 每次读取1MB
+                            chunk_size = 1024 * 1024
+                            while True:
+                                chunk = await response.content.read(chunk_size)
+                                if not chunk:
+                                    break
+                                file.write(chunk)
 
-                    if not os.path.exists(attachments_folder):
-                        os.makedirs(attachments_folder)
-                    filename = attachment["file"]["name"]
-                    output_path = f"{attachments_folder}/{filename}"
-
-                    with open(output_path, "wb") as file:
-                        file.write(await response.read())
-
-                    print(f"附件已保存到: {output_path}")
+                        print(f"附件已保存到: {output_path}")
+            except Exception as e:
+                print(f"下载附件时出错: {e}")
 
 
 # 2. 创建异步主函数并修复任务调度
