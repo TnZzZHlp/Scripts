@@ -82,7 +82,7 @@ async def download_file(result, output_folder: str):
                     },
                 ) as response:
                     if response.status != 200:
-                        raise ValueError("无法下载视频。")
+                        raise ValueError(f"无法下载视频。{response.status}")
 
                     with open(output_path, "wb") as file:
                         # 每次读取1MB
@@ -142,7 +142,7 @@ async def download_attachments(result, output_folder: str):
                         },
                     ) as response:
                         if response.status != 200:
-                            print(f"无法下载附件: {url}")
+                            print(f"无法下载附件: {url} {response.status}")
                             continue
 
                         with open(output_path, "wb") as file:
