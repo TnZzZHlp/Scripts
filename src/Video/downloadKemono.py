@@ -137,7 +137,6 @@ async def download_file(result, output_folder: str, session):
                 output_path = f"{output_folder}/{USERNAME}/{filename}"
 
                 url = f"{attachment['server']}/data{attachment['path']}"
-                logging.info(f"资源文件将保存到: {output_path}")
 
                 # 检查文件是否已存在，计算已下载的大小
                 downloaded_size = 0
