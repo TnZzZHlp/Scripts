@@ -43,7 +43,28 @@ def parse_artist_url(url: str) -> list:
 
     json = response.json()
 
-    return json["results"]
+    # 拿到所有的id
+    ids = [item["id"] for item in json["results"]]
+
+    # 获取所有资源的详细信息
+    resource_details = []
+    for id in ids:
+        print(f"https://{DOMAIN}/api/v1/{parts}/post/{id}")
+        response = requests.get(
+            f"https://{DOMAIN}/api/v1/{parts}/post/{id}",
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
+                "Accept": "*/*",
+            },
+        )
+        if response.status_code == 200:
+            if "attachments" in response.json():
+                resource_details.append(response.json()["attachments"])
+        else:
+            print(f"无法获取资源详情: {id}")
+            continue
+
+    return resource_details
 
 
 async def download_file(result, output_folder: str):
@@ -53,86 +74,24 @@ async def download_file(result, output_folder: str):
 
     # 获取限制
     async with SEM:
-        if "file" not in result or "path" not in result["file"]:
-            raise ValueError("结果中没有找到视频文件信息。")
-
-        # 确保输出文件夹存在
-        import os
-
-        if not os.path.exists(f"{output_folder}/videos/"):
-            os.makedirs(f"{output_folder}/videos/")
-
-        filename = result["file"]["name"]
-        output_path = f"{output_folder}/videos/{filename}"
-
-        # 判断输出文件夹是否已经有该文件
-        if os.path.exists(output_path):
-            print(f"视频已存在，跳过下载: {output_path}")
-            return
-
-        url = f"https://{DOMAIN}{result['file']['path']}"
-
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers={
-                        "Host": DOMAIN if DOMAIN else "",
-                        "Accept": "*/*",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
-                    },
-                ) as response:
-                    print(f"正在下载视频: {url}")
-                    if response.status != 200:
-                        raise ValueError(f"无法下载视频。{response.status}")
+            for attachment in result:
+                # 确保输出文件夹存在
+                import os
 
-                    with open(output_path, "wb") as file:
-                        # 每次读取1MB
-                        chunk_size = 1024 * 1024
-                        while True:
-                            chunk = await response.content.read(chunk_size)
-                            if not chunk:
-                                break
-                            file.write(chunk)
+                if not os.path.exists(f"{output_folder}"):
+                    os.makedirs(f"{output_folder}")
 
-                    print(f"视频已保存到: {output_path}")
-        except Exception as e:
-            print(f"下载视频时出错: {e}")
+                filename = attachment["name"]
+                output_path = f"{output_folder}/{filename}"
 
+                # 判断输出文件夹是否已经有该文件
+                if os.path.exists(output_path):
+                    print(f"视频已存在，跳过下载: {output_path}")
+                    return
 
-async def download_attachments(result, output_folder: str):
-    """
-    下载附件并保存到指定文件夹。
-    """
+                url = f"{attachment['server']}/data{attachment['path']}"
 
-    # 获取限制
-    async with SEM:
-        if "attachments" not in result:
-            print("没有找到附件信息。")
-            return
-
-        for attachment in result["attachments"]:
-            if "file" not in attachment or "path" not in attachment["file"]:
-                print("附件信息不完整，跳过。")
-                continue
-
-            # 确保附件输出文件夹存在
-            attachments_folder = f"{output_folder}/attachments"
-            import os
-
-            if not os.path.exists(attachments_folder):
-                os.makedirs(attachments_folder)
-            filename = attachment["file"]["name"]
-            output_path = f"{attachments_folder}/{filename}"
-
-            # 判断输出文件夹是否已经有该文件
-            if os.path.exists(output_path):
-                print(f"附件已存在，跳过下载: {output_path}")
-                continue
-
-            url = f"https://{DOMAIN}{attachment['file']['path']}"
-
-            try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
                         url,
@@ -142,10 +101,9 @@ async def download_attachments(result, output_folder: str):
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                         },
                     ) as response:
-                        print(f"正在下载附件: {url}")
+                        print(f"正在下载视频: {url}")
                         if response.status != 200:
-                            print(f"无法下载附件: {url} {response.status}")
-                            continue
+                            raise ValueError(f"无法下载视频。{response.status}")
 
                         with open(output_path, "wb") as file:
                             # 每次读取1MB
@@ -156,9 +114,9 @@ async def download_attachments(result, output_folder: str):
                                     break
                                 file.write(chunk)
 
-                        print(f"附件已保存到: {output_path}")
-            except Exception as e:
-                print(f"下载附件时出错: {e}")
+                        print(f"视频已保存到: {output_path}")
+        except Exception as e:
+            print(f"下载视频时出错: {e}")
 
 
 # 2. 创建异步主函数并修复任务调度
@@ -166,7 +124,6 @@ async def async_main(resources, output_folder):
     tasks = []
     for resource in resources:
         tasks.append(asyncio.create_task(download_file(resource, output_folder)))
-        tasks.append(asyncio.create_task(download_attachments(resource, output_folder)))
 
     if tasks:
         await asyncio.gather(*tasks)
