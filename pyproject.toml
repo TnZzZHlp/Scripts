@@ -5,6 +5,7 @@ dependencies = [
   "beautifulsoup4>=4.13.4",
   "pypinyin>=0.54.0",
   "requests>=2.32.3",
+  "tenacity>=9.1.2",
 ]
 description = "Add your description here"
 name = "scripts"

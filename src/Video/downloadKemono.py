@@ -3,6 +3,8 @@ import aiohttp
 import requests
 import asyncio
 
+from tenacity import retry
+
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 COOKIES = None
@@ -50,21 +52,23 @@ def parse_artist_url(url: str) -> list:
     resource_details = []
     for id in ids:
         print(f"https://{DOMAIN}/api/v1/{parts}/post/{id}")
-        response = requests.get(
-            f"https://{DOMAIN}/api/v1/{parts}/post/{id}",
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
-                "Accept": "*/*",
-            },
-        )
-        if response.status_code == 200:
-            if "attachments" in response.json():
-                resource_details.append(response.json()["attachments"])
-        else:
-            print(f"无法获取资源详情: {id}")
-            continue
+        get_detail(id, parts, resource_details)
 
     return resource_details
+
+
+@retry
+def get_detail(id, parts, resource_details):
+    response = requests.get(
+        f"https://{DOMAIN}/api/v1/{parts}/post/{id}",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
+            "Accept": "*/*",
+        },
+    )
+    if response.status_code == 200:
+        if "attachments" in response.json():
+            resource_details.append(response.json()["attachments"])
 
 
 async def download_file(result, output_folder: str):
