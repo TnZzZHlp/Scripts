@@ -13,7 +13,7 @@ from tenacity import retry, stop_after_attempt
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 PROXY = "socks5://192.168.2.1:7890"
-
+USERNAME = ""
 
 # 在脚本开始处配置日志
 logging.basicConfig(
@@ -34,6 +34,8 @@ def parse_artist_url(url: str) -> list:
 
     # 分割URL后取后三部分
     global DOMAIN
+    global USERNAME
+    USERNAME = url.split("/")[-1]  # 获取用户名
     DOMAIN = url.split("/")[2]
     parts = "/".join(url.split("/")[-3:])
 
@@ -132,7 +134,7 @@ async def download_file(result, output_folder: str, session):
                     os.makedirs(f"{output_folder}")
 
                 filename = attachment["name"]
-                output_path = f"{output_folder}/{filename}"
+                output_path = f"{output_folder}/{USERNAME}/{filename}"
 
                 url = f"{attachment['server']}/data{attachment['path']}"
                 logging.info(f"资源文件将保存到: {output_path}")
