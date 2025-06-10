@@ -122,6 +122,7 @@ async def download_file(result, output_folder: str, session):
     """
 
     url = ""
+    filename = ""
 
     # 获取限制
     async with SEM:
@@ -213,7 +214,7 @@ async def download_file(result, output_folder: str, session):
                         logging.info(f"视频已完整保存到: {output_path}")
 
         except Exception as e:
-            logging.error(f"下载失败 URL: {url} - 错误: {e}")
+            logging.error(f"下载失败 Filename: {filename} URL: {url} - 错误: {e}")
 
 
 # 2. 创建异步主函数并修复任务调度
