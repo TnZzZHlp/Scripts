@@ -130,8 +130,8 @@ async def download_file(result, output_folder: str, session):
                 # 确保输出文件夹存在
                 import os
 
-                if not os.path.exists(f"{output_folder}"):
-                    os.makedirs(f"{output_folder}")
+                if not os.path.exists(f"{output_folder}/{USERNAME}"):
+                    os.makedirs(f"{output_folder}/{USERNAME}")
 
                 filename = attachment["name"]
                 output_path = f"{output_folder}/{USERNAME}/{filename}"
