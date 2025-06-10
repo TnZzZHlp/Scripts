@@ -1,6 +1,7 @@
 [project]
 dependencies = [
   "aiohttp>=3.12.12",
+  "aiohttp-socks5",
   "beautifulsoup4>=4.13.4",
   "pypinyin>=0.54.0",
   "requests>=2.32.3",
@@ -10,3 +11,6 @@ name = "scripts"
 readme = "README.md"
 requires-python = ">=3.13"
 version = "0.1.0"
+
+[tool.uv.sources]
+aiohttp-socks5 = { git = "https://github.com/HMaker/aiohttp-socks5.git", rev = "latest" }
