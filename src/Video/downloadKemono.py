@@ -76,7 +76,8 @@ async def download_file(result, output_folder: str):
                 async with session.get(
                     url,
                     headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
+                        "Referer": f"https://{DOMAIN}/",
                     },
                 ) as response:
                     print(f"正在下载视频: {url}")
@@ -136,7 +137,8 @@ async def download_attachments(result, output_folder: str):
                     async with session.get(
                         url,
                         headers={
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
+                            "Referer": f"https://{DOMAIN}/",
                         },
                     ) as response:
                         print(f"正在下载附件: {url}")
