@@ -2,11 +2,11 @@ import argparse
 import aiohttp
 import requests
 import asyncio
-from aiohttp_socks import ProxyType, ProxyConnector, ChainProxyConnector
+from aiohttp_socks import ProxyConnector
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-PROXY = "socks5://192.168.2.1:7890"
+PROXY = "http://192.168.2.1:7890"
 
 
 def parse_artist_url(url: str) -> list:
