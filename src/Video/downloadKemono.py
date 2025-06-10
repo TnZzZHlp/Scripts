@@ -73,7 +73,7 @@ def get_detail(id, parts, resource_details):
 
 
 @retry(stop=stop_after_attempt(3))
-async def download_file(result, output_folder: str):
+async def download_file(result, output_folder: str, session):
     """
     下载视频并保存到指定文件夹。
     """
@@ -81,6 +81,7 @@ async def download_file(result, output_folder: str):
     # 获取限制
     async with SEM:
         try:
+
             for attachment in result:
                 # 确保输出文件夹存在
                 import os
@@ -93,44 +94,38 @@ async def download_file(result, output_folder: str):
 
                 url = f"{attachment['server']}/data{attachment['path']}"
 
-                async with aiohttp.ClientSession(
-                    connector=ProxyConnector.from_url(PROXY)
-                ) as session:
-                    async with session.get(
-                        url,
-                        headers={
-                            "Host": DOMAIN if DOMAIN else "",
-                            "Accept": "*/*",
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
-                        },
-                    ) as response:
-                        print(f"正在下载视频: {url}")
-                        if response.status != 200:
-                            raise ValueError(f"无法下载视频。{response.status}")
+                async with session.get(
+                    url,
+                    headers={
+                        "Accept": "*/*",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
+                    },
+                ) as response:
+                    print(f"正在下载视频: {url}")
+                    if response.status != 200:
+                        raise ValueError(f"无法下载视频。{response.status}")
 
-                        file_size = response.content_length
+                    file_size = response.content_length
 
-                        # 检查文件是否已存在且大小匹配
-                        if (
-                            os.path.exists(output_path)
-                            and os.path.getsize(output_path) == file_size
-                        ):
-                            print(f"文件已存在且大小匹配: {output_path}")
-                            return
-                        chunk_size = 4 * 1024 * 1024  # 4MB 是视频下载的良好平衡点
-                        with open(output_path, "wb") as file:
-                            async for chunk in response.content.iter_chunked(
-                                chunk_size
-                            ):
-                                file.write(chunk)
+                    # 检查文件是否已存在且大小匹配
+                    if (
+                        os.path.exists(output_path)
+                        and os.path.getsize(output_path) == file_size
+                    ):
+                        print(f"文件已存在且大小匹配: {output_path}")
+                        return
+                    chunk_size = 4 * 1024 * 1024  # 4MB 是视频下载的良好平衡点
+                    with open(output_path, "wb") as file:
+                        async for chunk in response.content.iter_chunked(chunk_size):
+                            file.write(chunk)
 
-                        # 检查下载是否完整
-                        if file_size and os.path.getsize(output_path) != file_size:
-                            raise ValueError(
-                                f"下载的视频大小不匹配: {os.path.getsize(output_path)} != {file_size}"
-                            )
+                    # 检查下载是否完整
+                    if file_size and os.path.getsize(output_path) != file_size:
+                        raise ValueError(
+                            f"下载的视频大小不匹配: {os.path.getsize(output_path)} != {file_size}"
+                        )
 
-                        print(f"视频已保存到: {output_path}")
+                    print(f"视频已保存到: {output_path}")
 
         except Exception as e:
             print(f"下载视频时出错: {e}")
@@ -140,7 +135,12 @@ async def download_file(result, output_folder: str):
 async def async_main(resources, output_folder):
     tasks = []
     for resource in resources:
-        tasks.append(asyncio.create_task(download_file(resource, output_folder)))
+        async with aiohttp.ClientSession(
+            connector=ProxyConnector.from_url(PROXY)
+        ) as session:
+            tasks.append(
+                asyncio.create_task(download_file(resource, output_folder, session))
+            )
 
     if tasks:
         await asyncio.gather(*tasks)
