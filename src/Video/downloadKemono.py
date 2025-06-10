@@ -1,13 +1,14 @@
 import argparse
 import aiohttp
 import requests
+from aiohttp_socks import ProxyConnector
 import asyncio
 
 from tenacity import retry
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-COOKIES = None
+PROXY = "socks5://192.168.2.1:7890"
 
 
 def parse_artist_url(url: str) -> list:
@@ -96,7 +97,9 @@ async def download_file(result, output_folder: str):
 
                 url = f"{attachment['server']}/data{attachment['path']}"
 
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession(
+                    connector=ProxyConnector.from_url(PROXY)
+                ) as session:
                     async with session.get(
                         url,
                         headers={
