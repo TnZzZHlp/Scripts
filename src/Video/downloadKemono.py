@@ -144,9 +144,6 @@ async def download_file(result, output_folder: str, session):
                 file_exists = os.path.exists(output_path)
                 if file_exists:
                     downloaded_size = os.path.getsize(output_path)
-                    logging.info(
-                        f"找到已下载文件: {output_path}，已下载 {downloaded_size} 字节"
-                    )
 
                 # 准备请求头，添加Range以实现断点续传
                 headers = {
@@ -163,7 +160,6 @@ async def download_file(result, output_folder: str, session):
                     headers=headers,
                 ) as response:
                     if response.status == 416:  # 请求范围不满足
-                        logging.info(f"文件已经完整下载: {output_path}")
                         return
                     elif response.status not in [200, 206]:  # 206是部分内容的状态码
                         raise ValueError(f"无法下载视频。状态码: {response.status}")
@@ -181,7 +177,6 @@ async def download_file(result, output_folder: str, session):
 
                     # 检查文件是否已完整下载
                     if file_exists and downloaded_size == file_size:
-                        logging.info(f"文件已存在且完整: {output_path}")
                         return
 
                     # 以追加模式打开文件进行断点续传
