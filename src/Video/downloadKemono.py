@@ -2,11 +2,9 @@ import argparse
 import aiohttp
 import requests
 import asyncio
-from aiohttp_socks import ProxyConnector
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-PROXY = "socks4://192.168.2.1:7890"
 COOKIES = None
 
 
@@ -76,9 +74,7 @@ async def download_file(result, output_folder: str):
         url = f"https://{DOMAIN}{result['file']['path']}"
 
         try:
-            async with aiohttp.ClientSession(
-                connector=ProxyConnector.from_url(PROXY)
-            ) as session:
+            async with aiohttp.ClientSession() as session:
                 async with session.get(
                     url,
                     headers={
@@ -138,9 +134,7 @@ async def download_attachments(result, output_folder: str):
             url = f"https://{DOMAIN}{attachment['file']['path']}"
 
             try:
-                async with aiohttp.ClientSession(
-                    connector=ProxyConnector.from_url(PROXY)
-                ) as session:
+                async with aiohttp.ClientSession() as session:
                     async with session.get(
                         url,
                         headers={
