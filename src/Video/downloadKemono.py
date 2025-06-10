@@ -1,14 +1,23 @@
 import argparse
+from math import log
 import aiohttp
 import requests
 from aiohttp_socks import ProxyConnector
 import asyncio
+import logging
 
 from tenacity import retry, stop_after_attempt
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 PROXY = "socks5://192.168.2.1:7890"
+
+
+# 在脚本开始处配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 
 def parse_artist_url(url: str) -> list:
@@ -52,7 +61,7 @@ def parse_artist_url(url: str) -> list:
     # 获取所有资源的详细信息
     resource_details = []
     for id in ids:
-        print(f"https://{DOMAIN}/api/v1/{parts}/post/{id}")
+        logging.info(f"正在获取资源 ID: {id}")
         get_detail(id, parts, resource_details)
 
     return resource_details
@@ -100,7 +109,7 @@ async def download_file(result, output_folder: str, session):
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                     },
                 ) as response:
-                    print(f"正在下载视频: {url}")
+                    logging.info(f"正在下载视频: {url}")
                     if response.status != 200:
                         raise ValueError(f"无法下载视频。{response.status}")
 
@@ -111,7 +120,7 @@ async def download_file(result, output_folder: str, session):
                         os.path.exists(output_path)
                         and os.path.getsize(output_path) == file_size
                     ):
-                        print(f"文件已存在且大小匹配: {output_path}")
+                        logging.info(f"文件已存在且大小匹配: {output_path}")
                         return
 
                     chunk_size = 4 * 1024 * 1024  # 4MB 是视频下载的良好平衡点
@@ -125,24 +134,23 @@ async def download_file(result, output_folder: str, session):
                             f"下载的视频大小不匹配: {os.path.getsize(output_path)} != {file_size}"
                         )
 
-                    print(f"视频已保存到: {output_path}")
+                    logging.info(f"视频已保存到: {output_path}")
 
         except Exception as e:
-            print(f"下载视频时出错: {e}")
+            logging.exception("下载失败")  # 这会自动记录完整堆栈
 
 
 # 2. 创建异步主函数并修复任务调度
 async def async_main(resources, output_folder):
     tasks = []
     async with aiohttp.ClientSession(
-        connector=ProxyConnector.from_url(PROXY)
+        connector=ProxyConnector.from_url(PROXY),
+        timeout=aiohttp.ClientTimeout(total=0, sock_read=30),
     ) as session:
         for resource in resources:
-
             tasks.append(
                 asyncio.create_task(download_file(resource, output_folder, session))
             )
-
         if tasks:
             await asyncio.gather(*tasks)
 
@@ -160,18 +168,18 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"正在解析 Kemono / Coomer Artist 的 URL: {args.url}")
+    logging.info(f"正在解析 Kemono / Coomer Artist 的 URL: {args.url}")
 
     resources = []
     try:
         resources = parse_artist_url(args.url)
     except Exception as e:
-        print(f"解析失败: {e}")
+        logging.error(f"解析失败: {e}")
 
     if resources:
         asyncio.run(async_main(resources, args.output))
     else:
-        print("没有找到任何资源")
+        logging.warning("没有找到任何资源")
 
 
 if __name__ == "__main__":
