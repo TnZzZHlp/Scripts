@@ -6,7 +6,7 @@ from aiohttp_socks import ProxyType, ProxyConnector, ChainProxyConnector
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-PROXY = ProxyConnector.from_url("socks5://192.168.2.1:7890")
+PROXY = "socks5://192.168.2.1:7890"
 
 
 def parse_artist_url(url: str) -> list:
@@ -72,7 +72,9 @@ async def download_file(result, output_folder: str):
         print(f"正在下载视频: {url}")
 
         try:
-            async with aiohttp.ClientSession(connector=PROXY) as session:
+            async with aiohttp.ClientSession(
+                connector=ProxyConnector.from_url(PROXY)
+            ) as session:
                 async with session.get(
                     url,
                     headers={
@@ -130,7 +132,9 @@ async def download_attachments(result, output_folder: str):
             print(f"正在下载附件: {url}")
 
             try:
-                async with aiohttp.ClientSession(connector=PROXY) as session:
+                async with aiohttp.ClientSession(
+                    connector=ProxyConnector.from_url(PROXY)
+                ) as session:
                     async with session.get(
                         url,
                         headers={
