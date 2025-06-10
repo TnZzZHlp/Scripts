@@ -81,7 +81,6 @@ async def download_file(result, output_folder: str, session):
     # 获取限制
     async with SEM:
         try:
-
             for attachment in result:
                 # 确保输出文件夹存在
                 import os
@@ -134,16 +133,17 @@ async def download_file(result, output_folder: str, session):
 # 2. 创建异步主函数并修复任务调度
 async def async_main(resources, output_folder):
     tasks = []
-    for resource in resources:
-        async with aiohttp.ClientSession(
-            connector=ProxyConnector.from_url(PROXY)
-        ) as session:
+    async with aiohttp.ClientSession(
+        connector=ProxyConnector.from_url(PROXY)
+    ) as session:
+        for resource in resources:
+
             tasks.append(
                 asyncio.create_task(download_file(resource, output_folder, session))
             )
 
-    if tasks:
-        await asyncio.gather(*tasks)
+        if tasks:
+            await asyncio.gather(*tasks)
 
 
 def main():
