@@ -2,7 +2,6 @@ import argparse
 from math import log
 import aiohttp
 import requests
-from aiohttp_socks import ProxyConnector
 import asyncio
 import logging
 from tqdm.asyncio import tqdm
@@ -12,7 +11,6 @@ from tenacity import retry, stop_after_attempt
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-PROXY = "socks5://192.168.2.1:7890"
 USERNAME = ""
 
 # 在脚本开始处配置日志
@@ -221,7 +219,6 @@ async def download_file(result, output_folder: str, session):
 async def async_main(resources, output_folder):
     tasks = []
     async with aiohttp.ClientSession(
-        connector=ProxyConnector.from_url(PROXY),
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
     ) as session:
         for resource in resources:
