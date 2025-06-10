@@ -6,6 +6,7 @@ from aiohttp_socks import ProxyConnector
 import asyncio
 import logging
 from tqdm.asyncio import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from tenacity import retry, stop_after_attempt
 
@@ -126,18 +127,23 @@ async def download_file(result, output_folder: str, session):
                         return
 
                     chunk_size = 4 * 1024 * 1024  # 4MB 是视频下载的良好平衡点
-                    progress = tqdm(
-                        total=file_size,
-                        unit="B",
-                        unit_scale=True,
-                        desc=f"下载 {filename}",
-                        ascii=True,
-                    )
-                    with open(output_path, "wb") as file:
-                        async for chunk in response.content.iter_chunked(chunk_size):
-                            file.write(chunk)
-                            progress.update(len(chunk))
-                    progress.close()
+
+                    # 使用logging_redirect_tqdm确保日志和进度条不会冲突
+                    with logging_redirect_tqdm():
+                        progress = tqdm(
+                            total=file_size,
+                            unit="B",
+                            unit_scale=True,
+                            desc=f"下载 {filename}",
+                            ascii=True,
+                        )
+                        with open(output_path, "wb") as file:
+                            async for chunk in response.content.iter_chunked(
+                                chunk_size
+                            ):
+                                file.write(chunk)
+                                progress.update(len(chunk))
+                        progress.close()
 
                     # 检查下载是否完整
                     if file_size and os.path.getsize(output_path) != file_size:
