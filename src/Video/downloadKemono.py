@@ -6,7 +6,7 @@ from aiohttp_socks import ProxyConnector
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
-PROXY = "socks4a://192.168.2.1:7890"
+PROXY = "socks4://192.168.2.1:7890"
 
 
 def parse_artist_url(url: str) -> list:
