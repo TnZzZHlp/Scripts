@@ -62,10 +62,14 @@ def parse_artist_url(url: str) -> list:
 
     # 获取所有资源的详细信息
     resource_details = []
+    # 进度条
+    pbar = tqdm(total=len(ids))
     for id in ids:
         logging.info(f"正在获取资源 ID: {id}")
         get_detail(id, parts, resource_details)
-
+        pbar.set_description(f"正在获取 {id} 信息")
+        pbar.update(1)
+    pbar.close()
     return resource_details
 
 
