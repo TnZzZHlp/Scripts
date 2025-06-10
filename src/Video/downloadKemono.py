@@ -76,6 +76,9 @@ async def download_file(result, output_folder: str):
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     url,
+                    headers={
+                        "Host": DOMAIN if DOMAIN else "",
+                    },
                 ) as response:
                     print(f"正在下载视频: {url}")
                     if response.status != 200:
@@ -131,6 +134,9 @@ async def download_attachments(result, output_folder: str):
                 async with aiohttp.ClientSession() as session:
                     async with session.get(
                         url,
+                        headers={
+                            "Host": DOMAIN if DOMAIN else "",
+                        },
                     ) as response:
                         print(f"正在下载附件: {url}")
                         if response.status != 200:
