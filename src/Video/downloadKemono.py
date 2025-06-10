@@ -1,5 +1,6 @@
 import argparse
 import requests
+import asyncio
 
 DOMAIN = None
 
@@ -38,7 +39,7 @@ def parse_artist_url(url: str) -> list:
     return json["results"]
 
 
-def download_file(result, output_folder: str):
+async def download_file(result, output_folder: str):
     """
     下载视频并保存到指定文件夹。
     """
@@ -76,7 +77,7 @@ def download_file(result, output_folder: str):
     print(f"视频已保存到: {output_path}")
 
 
-def download_attachments(result, output_folder: str):
+async def download_attachments(result, output_folder: str):
     """
     下载附件并保存到指定文件夹。
     """
@@ -134,8 +135,12 @@ def main():
     except Exception as e:
         print(f"解析失败: {e}")
 
+    tasks = []
     for resource in resources:
-        download_file(resource, args.output)
+        tasks.append(download_file(resource, args.output))
+        tasks.append(download_attachments(resource, args.output))
+
+    asyncio.run(asyncio.wait(tasks))
 
 
 if __name__ == "__main__":
