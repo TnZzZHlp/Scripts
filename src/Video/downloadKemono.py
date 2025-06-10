@@ -113,6 +113,7 @@ async def download_file(result, output_folder: str, session):
                     ):
                         print(f"文件已存在且大小匹配: {output_path}")
                         return
+
                     chunk_size = 4 * 1024 * 1024  # 4MB 是视频下载的良好平衡点
                     with open(output_path, "wb") as file:
                         async for chunk in response.content.iter_chunked(chunk_size):
