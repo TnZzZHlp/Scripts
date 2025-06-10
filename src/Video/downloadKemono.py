@@ -91,11 +91,6 @@ async def download_file(result, output_folder: str):
                 filename = attachment["name"]
                 output_path = f"{output_folder}/{filename}"
 
-                # 判断输出文件夹是否已经有该文件
-                if os.path.exists(output_path):
-                    print(f"视频已存在，跳过下载: {output_path}")
-                    return
-
                 url = f"{attachment['server']}/data{attachment['path']}"
 
                 async with aiohttp.ClientSession(
@@ -113,6 +108,16 @@ async def download_file(result, output_folder: str):
                         if response.status != 200:
                             raise ValueError(f"无法下载视频。{response.status}")
 
+                        file_size = response.content_length
+
+                        # 检查文件是否已存在且大小匹配
+                        if (
+                            os.path.exists(output_path)
+                            and os.path.getsize(output_path) == file_size
+                        ):
+                            print(f"文件已存在且大小匹配: {output_path}")
+                            return
+
                         with open(output_path, "wb") as file:
                             # 每次读取1MB
                             chunk_size = 1024 * 1024
@@ -122,7 +127,14 @@ async def download_file(result, output_folder: str):
                                     break
                                 file.write(chunk)
 
+                        # 检查下载是否完整
+                        if file_size and os.path.getsize(output_path) != file_size:
+                            raise ValueError(
+                                f"下载的视频大小不匹配: {os.path.getsize(output_path)} != {file_size}"
+                            )
+
                         print(f"视频已保存到: {output_path}")
+
         except Exception as e:
             print(f"下载视频时出错: {e}")
 
