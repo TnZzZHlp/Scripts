@@ -39,8 +39,7 @@ def parse_artist_url(url: str) -> list:
 
     # 获取 Set-Cookie
     global COOKIES
-    if "Set-Cookie" in response.headers:
-        COOKIES = response.headers["Set-Cookie"]
+    COOKIES = dict(response.cookies)
 
     json = response.json()
 
@@ -80,8 +79,8 @@ async def download_file(result, output_folder: str):
                     headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                         "Referer": f"https://{DOMAIN}/",
-                        "Cookie": COOKIES if COOKIES else "",
                     },
+                    cookies=COOKIES,
                 ) as response:
                     print(f"正在下载视频: {url}")
                     if response.status != 200:
@@ -140,8 +139,8 @@ async def download_attachments(result, output_folder: str):
                         headers={
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                             "Referer": f"https://{DOMAIN}/",
-                            "Cookie": COOKIES if COOKIES else "",
                         },
+                        cookies=COOKIES,
                     ) as response:
                         print(f"正在下载附件: {url}")
                         if response.status != 200:
