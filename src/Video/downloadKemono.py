@@ -4,7 +4,7 @@ import requests
 from aiohttp_socks import ProxyConnector
 import asyncio
 
-from tenacity import retry
+from tenacity import retry, stop_after_attempt
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
@@ -58,7 +58,7 @@ def parse_artist_url(url: str) -> list:
     return resource_details
 
 
-@retry
+@retry(stop=stop_after_attempt(3))
 def get_detail(id, parts, resource_details):
     response = requests.get(
         f"https://{DOMAIN}/api/v1/{parts}/post/{id}",
@@ -72,6 +72,7 @@ def get_detail(id, parts, resource_details):
             resource_details.append(response.json()["attachments"])
 
 
+@retry(stop=stop_after_attempt(3))
 async def download_file(result, output_folder: str):
     """
     下载视频并保存到指定文件夹。
