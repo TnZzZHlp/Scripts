@@ -7,6 +7,7 @@ from aiohttp_socks import ProxyConnector
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 PROXY = "socks4://192.168.2.1:7890"
+COOKIES = None
 
 
 def parse_artist_url(url: str) -> list:
@@ -37,6 +38,11 @@ def parse_artist_url(url: str) -> list:
     )
     if response.status_code != 200:
         raise ValueError("无法访问该 URL 或该页面不存在。")
+
+    # 获取 Set-Cookie
+    global COOKIES
+    if "Set-Cookie" in response.headers:
+        COOKIES = response.headers["Set-Cookie"]
 
     json = response.json()
 
@@ -78,6 +84,7 @@ async def download_file(result, output_folder: str):
                     headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                         "Referer": f"https://{DOMAIN}/",
+                        "Cookie": COOKIES if COOKIES else "",
                     },
                 ) as response:
                     print(f"正在下载视频: {url}")
@@ -139,6 +146,7 @@ async def download_attachments(result, output_folder: str):
                         headers={
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
                             "Referer": f"https://{DOMAIN}/",
+                            "Cookie": COOKIES if COOKIES else "",
                         },
                     ) as response:
                         print(f"正在下载附件: {url}")
