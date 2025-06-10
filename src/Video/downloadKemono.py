@@ -69,8 +69,6 @@ async def download_file(result, output_folder: str):
 
         url = f"https://{DOMAIN}{result['file']['path']}"
 
-        print(f"正在下载视频: {url}")
-
         try:
             async with aiohttp.ClientSession(
                 connector=ProxyConnector.from_url(PROXY)
@@ -81,6 +79,7 @@ async def download_file(result, output_folder: str):
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
                     },
                 ) as response:
+                    print(f"正在下载视频: {url}")
                     if response.status != 200:
                         raise ValueError(f"无法下载视频。{response.status}")
 
@@ -129,7 +128,6 @@ async def download_attachments(result, output_folder: str):
                 continue
 
             url = f"https://{DOMAIN}{attachment['file']['path']}"
-            print(f"正在下载附件: {url}")
 
             try:
                 async with aiohttp.ClientSession(
@@ -141,6 +139,7 @@ async def download_attachments(result, output_folder: str):
                             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
                         },
                     ) as response:
+                        print(f"正在下载附件: {url}")
                         if response.status != 200:
                             print(f"无法下载附件: {url} {response.status}")
                             continue
