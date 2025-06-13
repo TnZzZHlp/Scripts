@@ -222,7 +222,7 @@ async def download_file(result, output_folder: str, session):
 async def async_main(url, output_folder):
     # 使用长连接，并将最大并发数与 SEM 保持一致，设置 keepalive
     connector = ProxyConnector.from_url(
-        PROXY, limit=SEM._value + 8, keepalive_timeout=30
+        PROXY, limit=0, limit_per_host=0, keepalive_timeout=30
     )
     async with aiohttp.ClientSession(
         connector=connector,
