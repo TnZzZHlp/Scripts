@@ -144,11 +144,10 @@ async def download_file(result, output_folder: str, session):
                 if file_exists:
                     downloaded_size = os.path.getsize(output_path)
 
-                # 准备请求头，添加断点续传和强制关闭连接
+                # 准备请求头，添加断点续传
                 headers = {
                     "Accept": "*/*",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
-                    "Connection": "close",
                 }
 
                 # 如果已经下载了部分文件，添加Range头
@@ -220,8 +219,8 @@ async def download_file(result, output_folder: str, session):
 
 # 2. 创建异步主函数并修复任务调度
 async def async_main(url, output_folder):
-    # 强制每次请求后关闭连接，避免 WinError 64
-    connector = ProxyConnector.from_url(PROXY, force_close=True, limit=1)
+    # 使用长连接，并将最大并发数与 SEM 保持一致，设置 keepalive
+    connector = ProxyConnector.from_url(PROXY, limit=SEM._value, keepalive_timeout=30)
     async with aiohttp.ClientSession(
         connector=connector,
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
