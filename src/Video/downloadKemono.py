@@ -109,8 +109,9 @@ async def get_detail(id, parts, resource_details, session):
         },
     ) as response:
         if response.status == 200:
-            if "attachments" in await response.json():
-                resource_details.append(await response.json()["attachments"])
+            data = await response.json()
+            if "attachments" in data:
+                resource_details.append(data["attachments"])
 
 
 # 强制每次请求后关闭连接，避免 WinError 64
