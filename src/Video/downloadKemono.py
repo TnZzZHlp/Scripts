@@ -1,7 +1,5 @@
 import argparse
-from math import log
 import aiohttp
-import requests
 import asyncio
 import logging
 from tqdm.asyncio import tqdm
