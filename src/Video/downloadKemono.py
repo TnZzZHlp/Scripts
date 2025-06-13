@@ -53,17 +53,17 @@ async def parse_artist_url(url: str, session) -> list:
             raise ValueError("URL 必须是 Kemono 或 Coomer 的 Artist 页面。")
 
         logging.info(f"正在获取页面，偏移量: {offset}")
-        response = requests.get(
+        response = await session.get(
             resource_url,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0"
             },
         )
 
-        if response.status_code != 200:
+        if response.status != 200:
             raise ValueError(f"无法访问 {resource_url} 或该页面不存在。")
 
-        json_data = response.json()
+        json_data = await response.json()
 
         # 获取总数，只在第一次请求时设置
         if (
