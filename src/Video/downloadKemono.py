@@ -13,7 +13,7 @@ from tenacity import retry, stop_after_attempt
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 USERNAME = ""
-PROXY = "socks5://192.168.2.1:7890"
+PROXY = "http://192.168.2.1:7890"
 
 # 在脚本开始处配置日志
 logging.basicConfig(
