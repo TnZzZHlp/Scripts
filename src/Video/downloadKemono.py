@@ -6,12 +6,14 @@ import asyncio
 import logging
 from tqdm.asyncio import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
+from aiohttp_socks import ProxyConnector
 
 from tenacity import retry, stop_after_attempt
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 USERNAME = ""
+PROXY = "socks5://192.168.2.1:7890"
 
 # 在脚本开始处配置日志
 logging.basicConfig(
@@ -220,6 +222,7 @@ async def async_main(resources, output_folder):
     tasks = []
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
+        connector=ProxyConnector.from_url(PROXY),
     ) as session:
         for resource in resources:
             tasks.append(
