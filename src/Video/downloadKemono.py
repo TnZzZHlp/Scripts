@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 
 
-def parse_artist_url(url: str) -> list:
+async def parse_artist_url(url: str, session) -> list:
     """
     解析 Kemono Artist 的 URL，提取出 所有资源页面url。
     支持分页加载所有内容。
@@ -94,7 +94,7 @@ def parse_artist_url(url: str) -> list:
     # 进度条
     pbar = tqdm(total=len(all_ids))
     for id in all_ids:
-        get_detail(id, parts, resource_details)
+        await get_detail(id, parts, resource_details, session)
         pbar.set_description(f"正在获取 {id} 信息")
         pbar.update(1)
     pbar.close()
@@ -102,17 +102,17 @@ def parse_artist_url(url: str) -> list:
 
 
 @retry(stop=stop_after_attempt(3))
-def get_detail(id, parts, resource_details):
-    response = requests.get(
+async def get_detail(id, parts, resource_details, session):
+    async with session.get(
         f"https://{DOMAIN}/api/v1/{parts}/post/{id}",
         headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0",
             "Accept": "*/*",
         },
-    )
-    if response.status_code == 200:
-        if "attachments" in response.json():
-            resource_details.append(response.json()["attachments"])
+    ) as response:
+        if response.status == 200:
+            if "attachments" in await response.json():
+                resource_details.append(await response.json()["attachments"])
 
 
 @retry(stop=stop_after_attempt(3))
@@ -218,12 +218,16 @@ async def download_file(result, output_folder: str, session):
 
 
 # 2. 创建异步主函数并修复任务调度
-async def async_main(resources, output_folder):
+async def async_main(url, output_folder):
     tasks = []
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
         connector=ProxyConnector.from_url(PROXY),
     ) as session:
+        logging.info(f"正在解析 Kemono / Coomer Artist 的 URL: {url}")
+
+        resources = await parse_artist_url(url, session)
+
         for resource in resources:
             tasks.append(
                 asyncio.create_task(download_file(resource, output_folder, session))
@@ -245,18 +249,7 @@ def main():
     )
     args = parser.parse_args()
 
-    logging.info(f"正在解析 Kemono / Coomer Artist 的 URL: {args.url}")
-
-    resources = []
-    try:
-        resources = parse_artist_url(args.url)
-    except Exception as e:
-        logging.error(f"解析失败: {e}")
-
-    if resources:
-        asyncio.run(async_main(resources, args.output))
-    else:
-        logging.warning("没有找到任何资源")
+    asyncio.run(async_main(args.url, args.output))
 
 
 if __name__ == "__main__":
