@@ -113,7 +113,8 @@ async def get_detail(id, parts, resource_details, session):
                 resource_details.append(await response.json()["attachments"])
 
 
-@retry(stop=stop_after_attempt(3))
+# 强制每次请求后关闭连接，避免 WinError 64
+@retry(stop=stop_after_attempt(3), reraise=True)
 async def download_file(result, output_folder: str, session):
     """
     下载视频并保存到指定文件夹，支持断点续传。
@@ -219,9 +220,8 @@ async def download_file(result, output_folder: str, session):
 
 # 2. 创建异步主函数并修复任务调度
 async def async_main(url, output_folder):
-    tasks = []
     # 强制每次请求后关闭连接，避免 WinError 64
-    connector = ProxyConnector.from_url(PROXY, force_close=True)
+    connector = ProxyConnector.from_url(PROXY, force_close=True, limit=1)
     async with aiohttp.ClientSession(
         connector=connector,
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
@@ -230,6 +230,7 @@ async def async_main(url, output_folder):
 
         resources = await parse_artist_url(url, session)
 
+        tasks = []
         for resource in resources:
             tasks.append(
                 asyncio.create_task(download_file(resource, output_folder, session))
