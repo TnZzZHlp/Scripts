@@ -17,6 +17,7 @@ logging.basicConfig(
 )
 
 
+@retry(stop=stop_after_attempt(3), reraise=True)
 async def parse_artist_url(url: str, session) -> list:
     """
     解析 Kemono Artist 的 URL，提取出 所有资源页面url。
@@ -220,6 +221,12 @@ async def download_file(result, output_folder: str, session):
             raise  # 重新抛出以触发 tenacity 重试
 
 
+# 包装下载函数以更新视频数量进度条
+async def _download_and_count(resource, output_folder, session, pbar):
+    await download_file(resource, output_folder, session)
+    pbar.update(len(resource))
+
+
 # 2. 创建异步主函数并修复任务调度
 async def async_main(url, output_folder):
     async with aiohttp.ClientSession(
@@ -230,16 +237,24 @@ async def async_main(url, output_folder):
 
         resources = await parse_artist_url(url, session)
 
+        # 全局视频数量进度条
+        total_videos = sum(len(r) for r in resources)
+        video_pbar = tqdm(total=total_videos, desc="视频下载进度", unit="个")
+
         tasks = []
         for resource in resources:
             tasks.append(
-                asyncio.create_task(download_file(resource, output_folder, session))
+                asyncio.create_task(
+                    _download_and_count(resource, output_folder, session, video_pbar)
+                )
             )
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for res in results:
                 if isinstance(res, Exception):
                     logging.warning(f"下载任务失败，已跳过。错误: {res}")
+        # 关闭全局进度条
+        video_pbar.close()
 
 
 def main():
