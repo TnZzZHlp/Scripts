@@ -10,6 +10,7 @@ import os
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 USERNAME = ""
+OUTPUT_FOLDER = None  # 全局记录输出目录
 
 # 在脚本开始处配置日志
 logging.basicConfig(
@@ -30,10 +31,13 @@ async def parse_artist_url(url: str, session) -> list:
         raise ValueError("URL 必须是 Kemono 或 Coomer 的 Artist 页面。")
 
     # 分割URL后取后三部分
-    global DOMAIN
-    global USERNAME
+    global DOMAIN, USERNAME
     USERNAME = url.split("/")[-1]  # 获取用户名
     DOMAIN = url.split("/")[2]
+    # 加载已下载ID，跳过这些ID获取详情
+    from downloadKemono import load_downloaded_ids
+
+    downloaded_ids = load_downloaded_ids(OUTPUT_FOLDER) if OUTPUT_FOLDER else set()
     parts = "/".join(url.split("/")[-3:])
 
     # 初始化变量
@@ -91,6 +95,11 @@ async def parse_artist_url(url: str, session) -> list:
     # 进度条
     pbar = tqdm(total=len(all_ids))
     for id in all_ids:
+        # 跳过已下载ID
+        if id in downloaded_ids:
+            pbar.set_description(f"跳过已下载 {id}")
+            pbar.update(1)
+            continue
         try:
             await get_detail(id, parts, resource_details, session)
         except RetryError as e:
@@ -251,6 +260,8 @@ async def _download_and_count(resource, output_folder, session, pbar):
 
 # 2. 创建异步主函数并修复任务调度
 async def async_main(url, output_folder):
+    global OUTPUT_FOLDER
+    OUTPUT_FOLDER = output_folder
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
         connector=aiohttp.TCPConnector(ssl=False),
