@@ -4,14 +4,12 @@ import asyncio
 import logging
 from tqdm.asyncio import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-from aiohttp_socks import ProxyConnector
 
 from tenacity import retry, stop_after_attempt
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 USERNAME = ""
-PROXY = "socks5://192.168.2.1:7890"
 
 # 在脚本开始处配置日志
 logging.basicConfig(
@@ -220,12 +218,7 @@ async def download_file(result, output_folder: str, session):
 
 # 2. 创建异步主函数并修复任务调度
 async def async_main(url, output_folder):
-    # 使用长连接，并将最大并发数与 SEM 保持一致，设置 keepalive
-    connector = ProxyConnector.from_url(
-        PROXY, limit=100, limit_per_host=100, keepalive_timeout=30
-    )
     async with aiohttp.ClientSession(
-        connector=connector,
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
     ) as session:
         logging.info(f"正在解析 Kemono / Coomer Artist 的 URL: {url}")
