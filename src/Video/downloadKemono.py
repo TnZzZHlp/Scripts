@@ -6,8 +6,6 @@ from tqdm.asyncio import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from tenacity import retry, stop_after_attempt, RetryError
 
-asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
 USERNAME = ""
