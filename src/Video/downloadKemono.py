@@ -220,6 +220,7 @@ async def download_file(result, output_folder: str, session):
 async def async_main(url, output_folder):
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=0, sock_read=300),
+        connector=aiohttp.TCPConnector(ssl=False),
     ) as session:
         logging.info(f"正在解析 Kemono / Coomer Artist 的 URL: {url}")
 
