@@ -4,10 +4,9 @@ import asyncio
 import logging
 from tqdm.asyncio import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
+from tenacity import retry, stop_after_attempt, RetryError
 
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-from tenacity import retry, stop_after_attempt
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
@@ -92,9 +91,15 @@ async def parse_artist_url(url: str, session) -> list:
     # 进度条
     pbar = tqdm(total=len(all_ids))
     for id in all_ids:
-        await get_detail(id, parts, resource_details, session)
-        pbar.set_description(f"正在获取 {id} 信息")
-        pbar.update(1)
+        try:
+            await get_detail(id, parts, resource_details, session)
+        except RetryError as e:
+            logging.warning(f"获取 {id} 信息失败，已跳过。错误: {e}")
+        except Exception as e:
+            logging.warning(f"获取 {id} 信息时发生未知错误，已跳过。错误: {e}")
+        finally:
+            pbar.set_description(f"正在获取 {id} 信息")
+            pbar.update(1)
     pbar.close()
     return resource_details
 
@@ -114,7 +119,6 @@ async def get_detail(id, parts, resource_details, session):
                 resource_details.append(data["attachments"])
 
 
-# 强制每次请求后关闭连接，避免 WinError 64
 @retry(stop=stop_after_attempt(3), reraise=True)
 async def download_file(result, output_folder: str, session):
     """
@@ -234,7 +238,10 @@ async def async_main(url, output_folder):
                 asyncio.create_task(download_file(resource, output_folder, session))
             )
         if tasks:
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in results:
+                if isinstance(res, Exception):
+                    logging.warning(f"下载任务失败，已跳过。错误: {res}")
 
 
 def main():
