@@ -5,6 +5,7 @@ import logging
 from tqdm.asyncio import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from tenacity import retry, stop_after_attempt, RetryError
+import os
 
 DOMAIN = None
 SEM = asyncio.Semaphore(2)  # 限制并发下载数量
@@ -115,7 +116,7 @@ async def get_detail(id, parts, resource_details, session):
         if response.status == 200:
             data = await response.json()
             if "attachments" in data:
-                resource_details.append(data["attachments"])
+                resource_details.append({"id": id, "attachments": data["attachments"]})
 
 
 @retry(stop=stop_after_attempt(3), reraise=True)
@@ -221,10 +222,31 @@ async def download_file(result, output_folder: str, session):
             raise  # 重新抛出以触发 tenacity 重试
 
 
+# 记录已下载ID
+def load_downloaded_ids(output_folder):
+    path = f"{output_folder}/{USERNAME}/downloaded_ids.txt"
+    if not os.path.exists(path):
+        return set()
+    with open(path, "r") as f:
+        return set(line.strip() for line in f if line.strip())
+
+
+def record_downloaded_id(output_folder, id):
+    path = f"{output_folder}/{USERNAME}/downloaded_ids.txt"
+    # 确保目录存在
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as f:
+        f.write(f"{id}\n")
+
+
 # 包装下载函数以更新视频数量进度条
 async def _download_and_count(resource, output_folder, session, pbar):
-    await download_file(resource, output_folder, session)
-    pbar.update(len(resource))
+    try:
+        await download_file(resource["attachments"], output_folder, session)
+        record_downloaded_id(output_folder, resource["id"])
+        pbar.update(len(resource["attachments"]))
+    except Exception:
+        raise
 
 
 # 2. 创建异步主函数并修复任务调度
@@ -236,9 +258,14 @@ async def async_main(url, output_folder):
         logging.info(f"正在解析 Kemono / Coomer Artist 的 URL: {url}")
 
         resources = await parse_artist_url(url, session)
+        # 加载已下载ID并过滤
+        downloaded_ids = load_downloaded_ids(output_folder)
+        skipped = len(downloaded_ids)
+        resources = [r for r in resources if r["id"] not in downloaded_ids]
+        logging.info(f"跳过 {skipped} 个已下载资源")
 
         # 全局视频数量进度条
-        total_videos = sum(len(r) for r in resources)
+        total_videos = sum(len(r["attachments"]) for r in resources)
         video_pbar = tqdm(total=total_videos, desc="视频下载进度", unit="个")
 
         tasks = []
