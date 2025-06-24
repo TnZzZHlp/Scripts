@@ -10,7 +10,7 @@ import os
 import shutil
 import argparse
 
-# 定义ny文件夹的大小上限为25GB（转换为字节）
+# 定义ny文件夹的大小上限
 NY_SIZE_LIMIT_GB = 25
 NY_SIZE_LIMIT_BYTES = NY_SIZE_LIMIT_GB * 1024 * 1024 * 1024
 
