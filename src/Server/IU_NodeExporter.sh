@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 echo "正在安装 Node Exporter..."
 
