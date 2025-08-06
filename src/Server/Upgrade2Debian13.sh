@@ -3,7 +3,7 @@
 # 更新 Debian 13 的软件源
 update_sources() {
     echo "正在更新 Debian 13 的软件源..."
-echo 'Types: deb
+    echo 'Types: deb
 URIs: https://deb.debian.org/debian
 Suites: bookworm bookworm-updates bookworm-backports
 Components: main contrib non-free non-free-firmware
