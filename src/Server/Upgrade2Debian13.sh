@@ -42,7 +42,16 @@ Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 # Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 ' | sudo tee /etc/apt/sources.list.d/debian.sources
 
-    mv /etc/apt/sources.list /etc/apt/sources.list.bak
+    if [ $? -ne 0 ]; then
+        echo "更新软件源失败，请检查权限或网络连接。"
+        exit 1
+    fi
+
+    # 备份原有 sources.list 文件
+    if [ -f /etc/apt/sources.list ]; then
+        echo "备份原有 sources.list 文件..."
+        mv /etc/apt/sources.list /etc/apt/sources.list.bak
+    fi
 
     echo "Debian 13 的软件源更新完成！"
 }
