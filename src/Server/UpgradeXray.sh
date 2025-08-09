@@ -14,7 +14,7 @@ fi
 
 echo "Retrieving latest Xray version..."
 
-download_url=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r '.assets[] | select(.name | test("Xray-linux-64")) | .browser_download_url')
+download_url=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r '.assets[] | select(.name == "Xray-linux-64") | .browser_download_url')
 
 if [ -z "$download_url" ]; then
     echo "Failed to retrieve the download URL for the latest version of Xray."
