@@ -126,14 +126,19 @@ def build_ffmpeg_cmd(task: Task, qp: int, quality: str) -> List[str]:
 
 
 def run_cmd(cmd: List[str]) -> int:
-    # 逐行打印包含 frame / speed 的进度信息
+    # 动态刷新同一行显示包含 frame / speed 的进度（覆盖上一行）
     process = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True
     )
     assert process.stdout is not None
+    prev_len = 0
     for line in process.stdout:
         if any(key in line for key in ("frame=", "speed=")):
-            print(line.rstrip(), end="")
+            text = line.rstrip()
+            pad = " " * max(0, prev_len - len(text))  # 清除残余字符
+            print("\r" + text + pad, end="", flush=True)
+            prev_len = len(text)
+    print()  # 结束时换行
     return process.wait()
 
 
