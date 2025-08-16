@@ -5,7 +5,6 @@
 转码为 H.265 并输出为 MP4。输出文件名规则: 原文件名 + _h265.mp4。
 
 最新规则:
-    - 跳过: 已是 mp4 且首视频轨编码 HEVC(h265/hevc)。
     - 直接 remux (不重新编码): 容器不是 mp4 且首视频轨已是 HEVC，封装到 mp4；视频/音频 copy，丢弃字幕附件。
     - 转码: 其它全部 (视频重新编码为 HEVC，音频 copy，丢弃字幕附件)。
 
@@ -195,9 +194,7 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
                 continue
             codec = probe_video_codec(full)  # 所有文件都探测
             hevc_like = codec in {"hevc", "h265"}
-            # 跳过: 已是 mp4 且 hevc
-            if ext == ".mp4" and hevc_like:
-                continue
+            # 不再跳过任何文件，所有视频都进行转换
             # 决策 action
             if hevc_like and ext != ".mp4":
                 action = "remux"
@@ -334,7 +331,7 @@ def main():
 
     print(f"扫描目录: {args.root}")
     print(f"使用扩展名: {', '.join(exts)}")
-    print("转换规则: mp4+HEVC 跳过 | 非mp4+HEVC remux | 其它 transcode -> mp4+h265")
+    print("转换规则: 非mp4+HEVC remux | 其它 transcode -> mp4+h265")
 
     tasks = collect_tasks(args.root, exts, args.overwrite)
     if not tasks:
