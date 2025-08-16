@@ -51,6 +51,93 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 import time
+from datetime import datetime
+
+
+class ProgressDisplay:
+    """进度显示工具类"""
+
+    def __init__(self, total: int, description: str = "", verbose: bool = True):
+        self.total = total
+        self.current = 0
+        self.description = description
+        self.verbose = verbose
+        self.start_time = time.time()
+        self.last_update_time = 0
+        self.update_interval = 1.0  # 每秒更新一次
+
+    def update(self, increment: int = 1, item_name: str = ""):
+        """更新进度"""
+        self.current += increment
+        current_time = time.time()
+
+        # 控制更新频率，避免输出过于频繁
+        if (
+            current_time - self.last_update_time
+        ) < self.update_interval and self.current < self.total:
+            return
+
+        self.last_update_time = current_time
+
+        if self.total > 0:
+            percentage = (self.current / self.total) * 100
+            elapsed_time = current_time - self.start_time
+
+            # 计算预估剩余时间
+            if self.current > 0:
+                avg_time_per_item = elapsed_time / self.current
+                remaining_items = self.total - self.current
+                eta = remaining_items * avg_time_per_item
+                eta_str = self._format_time(eta)
+            else:
+                eta_str = "未知"
+
+            # 格式化已用时间
+            elapsed_str = self._format_time(elapsed_time)
+
+            # 创建进度条
+            bar_length = 30
+            filled_length = int(bar_length * self.current // self.total)
+            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+
+            progress_text = f"\r{self.description} [{bar}] {self.current}/{self.total} ({percentage:.1f}%) | 已用时: {elapsed_str} | 预计剩余: {eta_str}"
+
+            if item_name:
+                # 截断过长的文件名
+                if len(item_name) > 50:
+                    item_name = item_name[:47] + "..."
+                progress_text += f" | 当前: {item_name}"
+
+            print(progress_text, end="", flush=True)
+
+            if self.current >= self.total:
+                print()  # 完成时换行
+
+    def _format_time(self, seconds: float) -> str:
+        """格式化时间显示"""
+        if seconds < 60:
+            return f"{seconds:.1f}秒"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}分{secs}秒"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}小时{minutes}分钟"
+
+    def finish(self, success_message: str = ""):
+        """完成进度显示"""
+        if self.verbose:
+            if self.current < self.total:
+                self.current = self.total
+                self.update(0)
+
+            total_time = time.time() - self.start_time
+            if success_message:
+                print(f"{success_message} (总用时: {self._format_time(total_time)})")
+            else:
+                print(f"完成! 总用时: {self._format_time(total_time)}")
 
 
 @dataclass
@@ -110,27 +197,42 @@ class DuplicateVideoDetector:
         """扫描目录下的所有视频文件"""
         if self.verbose:
             print(f"正在扫描目录: {self.root_dir}")
+            print("首先统计文件总数...")
 
-        count = 0
+        # 首先统计总文件数以便显示进度
+        total_files = 0
         for file_path in self.root_dir.rglob("*"):
-            if file_path.is_file() and file_path.suffix.lower() in self.extensions:
-                try:
-                    file_size = file_path.stat().st_size
-                    video_file = VideoFile(
-                        path=str(file_path), size=file_size, name=file_path.name
-                    )
-                    self.video_files.append(video_file)
-                    count += 1
-
-                    if self.verbose and count % 100 == 0:
-                        print(f"已扫描 {count} 个视频文件...")
-
-                except (OSError, PermissionError) as e:
-                    if self.verbose:
-                        print(f"无法访问文件 {file_path}: {e}")
+            if file_path.is_file():
+                total_files += 1
 
         if self.verbose:
-            print(f"扫描完成，共找到 {len(self.video_files)} 个视频文件")
+            print(f"找到 {total_files} 个文件，开始筛选视频文件...")
+
+        # 创建进度显示器
+        progress = ProgressDisplay(total_files, "扫描文件", self.verbose)
+
+        processed_files = 0
+        video_count = 0
+
+        for file_path in self.root_dir.rglob("*"):
+            if file_path.is_file():
+                processed_files += 1
+                progress.update(1, file_path.name)
+
+                if file_path.suffix.lower() in self.extensions:
+                    try:
+                        file_size = file_path.stat().st_size
+                        video_file = VideoFile(
+                            path=str(file_path), size=file_size, name=file_path.name
+                        )
+                        self.video_files.append(video_file)
+                        video_count += 1
+
+                    except (OSError, PermissionError) as e:
+                        if self.verbose:
+                            print(f"\n无法访问文件 {file_path}: {e}")
+
+        progress.finish(f"扫描完成，共找到 {video_count} 个视频文件")
 
     def calculate_file_hash(self, file_path: str, chunk_size: int = 8192) -> str:
         """计算文件的MD5哈希值"""
@@ -285,12 +387,11 @@ class DuplicateVideoDetector:
         hash_groups = defaultdict(list)
         total_files = len(self.video_files)
 
-        for i, video_file in enumerate(self.video_files):
-            if self.verbose and (i + 1) % 10 == 0:
-                print(
-                    f"进度: {i + 1}/{total_files} ({(i + 1) / total_files * 100:.1f}%)"
-                )
+        # 创建进度显示器
+        progress = ProgressDisplay(total_files, "计算哈希值", self.verbose)
 
+        for video_file in self.video_files:
+            progress.update(1, video_file.name)
             video_file.hash_md5 = self.calculate_file_hash(video_file.path)
             if video_file.hash_md5:
                 hash_groups[video_file.hash_md5].append(video_file)
@@ -300,9 +401,7 @@ class DuplicateVideoDetector:
             hash_val: files for hash_val, files in hash_groups.items() if len(files) > 1
         }
 
-        if self.verbose:
-            print(f"找到 {len(duplicates)} 组哈希值相同的文件")
-
+        progress.finish(f"哈希计算完成，找到 {len(duplicates)} 组哈希值相同的文件")
         return duplicates
 
     def detect_by_name_similarity(
@@ -314,8 +413,14 @@ class DuplicateVideoDetector:
 
         similar_groups = defaultdict(list)
         processed = set()
+        total_files = len(self.video_files)
+
+        # 创建进度显示器
+        progress = ProgressDisplay(total_files, "比较文件名", self.verbose)
 
         for i, file1 in enumerate(self.video_files):
+            progress.update(1, file1.name)
+
             if i in processed:
                 continue
 
@@ -340,9 +445,7 @@ class DuplicateVideoDetector:
             key: files for key, files in similar_groups.items() if len(files) > 1
         }
 
-        if self.verbose:
-            print(f"找到 {len(duplicates)} 组名称相似的文件")
-
+        progress.finish(f"文件名比较完成，找到 {len(duplicates)} 组名称相似的文件")
         return duplicates
 
     def detect_by_duration(
@@ -356,27 +459,34 @@ class DuplicateVideoDetector:
         total_files = len(self.video_files)
         valid_files = []
 
-        for i, video_file in enumerate(self.video_files):
-            if self.verbose and (i + 1) % 10 == 0:
-                print(
-                    f"进度: {i + 1}/{total_files} ({(i + 1) / total_files * 100:.1f}%)"
-                )
+        # 创建进度显示器
+        progress = ProgressDisplay(total_files, "获取视频时长", self.verbose)
+
+        for video_file in self.video_files:
+            progress.update(1, video_file.name)
 
             duration = self.get_video_duration(video_file.path)
             if duration > 0:
                 video_file.duration = duration
                 valid_files.append(video_file)
             elif self.verbose:
-                print(f"跳过无法获取时长的文件: {video_file.path}")
+                print(f"\n跳过无法获取时长的文件: {video_file.path}")
 
-        if self.verbose:
-            print(f"成功获取 {len(valid_files)} 个文件的时长信息")
+        progress.finish(f"成功获取 {len(valid_files)} 个文件的时长信息")
 
         # 根据时长分组（考虑容差）
+        if self.verbose:
+            print("正在根据时长分组...")
+
         duration_groups = defaultdict(list)
         processed = set()
 
+        # 创建分组进度显示器
+        group_progress = ProgressDisplay(len(valid_files), "时长分组", self.verbose)
+
         for i, file1 in enumerate(valid_files):
+            group_progress.update(1, file1.name)
+
             if i in processed:
                 continue
 
@@ -401,9 +511,7 @@ class DuplicateVideoDetector:
             key: files for key, files in duration_groups.items() if len(files) > 1
         }
 
-        if self.verbose:
-            print(f"找到 {len(duplicates)} 组时长相近的文件")
-
+        group_progress.finish(f"时长分组完成，找到 {len(duplicates)} 组时长相近的文件")
         return duplicates
 
     def detect_by_duration_and_frames(
@@ -428,60 +536,81 @@ class DuplicateVideoDetector:
 
         # 对时长相近的文件进行画面比对
         frame_duplicates = defaultdict(list)
-        processed_groups = 0
         total_groups = len(duration_candidates)
 
+        # 创建组处理进度显示器
+        group_progress = ProgressDisplay(total_groups, "画面比较分组", self.verbose)
+
         for group_key, files in duration_candidates.items():
-            processed_groups += 1
-            if self.verbose:
-                print(
-                    f"正在处理第 {processed_groups}/{total_groups} 组时长相近的文件..."
-                )
+            group_progress.update(1, f"组 {group_key}")
 
             if len(files) < 2:
                 continue
 
+            if self.verbose:
+                print(f"\n正在处理组 {group_key} ({len(files)} 个文件)")
+
             # 提取每个文件的前N帧
             file_frames = {}
+
+            # 创建帧提取进度显示器
+            frame_progress = ProgressDisplay(
+                len(files), f"  提取帧 ({group_key})", self.verbose
+            )
+
             for video_file in files:
-                if self.verbose:
-                    print(f"  提取帧: {video_file.name}")
+                frame_progress.update(1, video_file.name)
                 frames = self.extract_video_frames(video_file.path, max_frames)
                 if frames:
                     file_frames[video_file.path] = (video_file, frames)
 
+            frame_progress.finish("帧提取完成")
+
             # 比较画面相似度
             processed_files = set()
             similar_group_count = 0
+            total_comparisons = len(file_frames) * (len(file_frames) - 1) // 2
 
-            for path1, (file1, frames1) in file_frames.items():
-                if path1 in processed_files:
-                    continue
+            if total_comparisons > 0:
+                similarity_progress = ProgressDisplay(
+                    total_comparisons, f"  相似度比较 ({group_key})", self.verbose
+                )
+                comparison_count = 0
 
-                similar_files = [file1]
-                processed_files.add(path1)
-
-                for path2, (file2, frames2) in file_frames.items():
-                    if path2 in processed_files:
+                for path1, (file1, frames1) in file_frames.items():
+                    if path1 in processed_files:
                         continue
 
-                    similarity = self.calculate_frame_similarity(frames1, frames2)
-                    if self.verbose:
-                        print(
-                            f"    相似度 {file1.name} vs {file2.name}: {similarity:.3f}"
-                        )
+                    similar_files = [file1]
+                    processed_files.add(path1)
 
-                    if similarity >= frame_similarity_threshold:
-                        similar_files.append(file2)
-                        processed_files.add(path2)
+                    for path2, (file2, frames2) in file_frames.items():
+                        if path2 in processed_files:
+                            continue
 
-                if len(similar_files) > 1:
-                    frame_group_key = f"{group_key}_frames_{similar_group_count}"
-                    frame_duplicates[frame_group_key] = similar_files
-                    similar_group_count += 1
+                        comparison_count += 1
+                        similarity_progress.update(1, f"{file1.name} vs {file2.name}")
 
-        if self.verbose:
-            print(f"找到 {len(frame_duplicates)} 组画面相似的文件")
+                        similarity = self.calculate_frame_similarity(frames1, frames2)
+                        if self.verbose:
+                            print(
+                                f"\n    相似度 {file1.name} vs {file2.name}: {similarity:.3f}"
+                            )
+
+                        if similarity >= frame_similarity_threshold:
+                            similar_files.append(file2)
+                            processed_files.add(path2)
+
+                    if len(similar_files) > 1:
+                        frame_group_key = f"{group_key}_frames_{similar_group_count}"
+                        frame_duplicates[frame_group_key] = similar_files
+                        similar_group_count += 1
+
+                similarity_progress.finish("相似度比较完成")
+
+        group_progress.finish(
+            f"画面比较完成，找到 {len(frame_duplicates)} 组画面相似的文件"
+        )
 
         return frame_duplicates
 
@@ -556,6 +685,21 @@ class DuplicateVideoDetector:
         deleted_count = 0
         failed_count = 0
 
+        # 计算总的要删除的文件数
+        total_to_delete = 0
+        for group_key, files in duplicates.items():
+            if len(files) > 1:
+                total_to_delete += len(files) - 1  # 保留最大的，删除其余的
+
+        if total_to_delete == 0:
+            if self.verbose:
+                print("没有重复文件需要删除")
+            return 0, 0
+
+        # 创建删除进度显示器
+        action_name = "模拟删除" if dry_run else "删除文件"
+        progress = ProgressDisplay(total_to_delete, action_name, self.verbose)
+
         for group_key, files in duplicates.items():
             if len(files) <= 1:
                 continue
@@ -565,17 +709,24 @@ class DuplicateVideoDetector:
             files_to_delete = sorted_files[1:]  # 除了第一个（最大文件）之外的所有文件
 
             for file in files_to_delete:
+                progress.update(1, file.name)
                 try:
                     if dry_run:
-                        print(f"[模拟] 将删除: {file.path}")
+                        if self.verbose:
+                            print(f"\n[模拟] 将删除: {file.path}")
                     else:
                         os.remove(file.path)
-                        print(f"[已删除] {file.path}")
+                        if self.verbose:
+                            print(f"\n[已删除] {file.path}")
                     deleted_count += 1
                 except OSError as e:
-                    print(f"[删除失败] {file.path}: {e}")
+                    if self.verbose:
+                        print(f"\n[删除失败] {file.path}: {e}")
                     failed_count += 1
 
+        progress.finish(
+            f"{'模拟' if dry_run else ''}删除完成: {deleted_count} 个文件, {failed_count} 个失败"
+        )
         return deleted_count, failed_count
 
 
@@ -664,34 +815,74 @@ def main():
         sys.exit(0)
 
     # 执行检测
+    print(f"\n{'='*60}")
+    print(f"开始重复文件检测 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"检测方法: {args.method}")
+    print(f"文件总数: {len(detector.video_files)}")
+    print(f"{'='*60}")
+
     all_duplicates = {}
+    detection_start_time = time.time()
+
+    # 计算需要执行的检测方法数量
+    methods_to_run = []
+    if args.method in ["size", "all"]:
+        methods_to_run.append("size")
+    if args.method in ["hash", "all"]:
+        methods_to_run.append("hash")
+    if args.method in ["name", "all"]:
+        methods_to_run.append("name")
+    if args.method in ["duration", "all"]:
+        methods_to_run.append("duration")
+    if args.method in ["frames", "all"]:
+        methods_to_run.append("frames")
+
+    total_methods = len(methods_to_run)
+    current_method = 0
 
     if args.method in ["size", "all"]:
+        current_method += 1
+        print(f"\n[{current_method}/{total_methods}] 开始文件大小检测...")
         duplicates = detector.detect_by_size()
         all_duplicates["文件大小"] = duplicates
         detector.print_duplicates_report(duplicates, "文件大小")
 
     if args.method in ["hash", "all"]:
+        current_method += 1
+        print(f"\n[{current_method}/{total_methods}] 开始哈希值检测...")
         duplicates = detector.detect_by_hash()
         all_duplicates["哈希值"] = duplicates
         detector.print_duplicates_report(duplicates, "哈希值")
 
     if args.method in ["name", "all"]:
+        current_method += 1
+        print(f"\n[{current_method}/{total_methods}] 开始文件名相似度检测...")
         duplicates = detector.detect_by_name_similarity(args.similarity)
         all_duplicates["文件名相似度"] = duplicates
         detector.print_duplicates_report(duplicates, "文件名相似度")
 
     if args.method in ["duration", "all"]:
+        current_method += 1
+        print(f"\n[{current_method}/{total_methods}] 开始视频时长检测...")
         duplicates = detector.detect_by_duration(args.duration_tolerance)
         all_duplicates["视频时长"] = duplicates
         detector.print_duplicates_report(duplicates, "视频时长")
 
     if args.method in ["frames", "all"]:
+        current_method += 1
+        print(f"\n[{current_method}/{total_methods}] 开始时长+画面检测...")
         duplicates = detector.detect_by_duration_and_frames(
             args.duration_tolerance, args.frame_similarity, args.max_frames
         )
         all_duplicates["时长+画面"] = duplicates
         detector.print_duplicates_report(duplicates, "时长+画面")
+
+    # 显示总体检测完成信息
+    total_detection_time = time.time() - detection_start_time
+    print(f"\n{'='*60}")
+    print(f"检测完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"总用时: {total_detection_time/60:.1f} 分钟 ({total_detection_time:.1f} 秒)")
+    print(f"{'='*60}")
 
     # 删除重复文件 (hash和duration方法都比较可靠)
     if args.delete:
