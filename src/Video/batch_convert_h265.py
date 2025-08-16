@@ -5,6 +5,7 @@
 转码为 H.265 并输出为 MP4。输出文件名规则: 原文件名 + _h265.mp4。
 
 最新规则:
+    - 跳过: 文件名包含 _h265 的文件（已转换过的文件）。
     - 直接 remux (不重新编码): 容器不是 mp4 且首视频轨已是 HEVC，封装到 mp4；视频/音频 copy，丢弃字幕附件。
     - 转码: 其它全部 (视频重新编码为 HEVC，音频 copy，丢弃字幕附件)。
 
@@ -186,6 +187,9 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
             ext = os.path.splitext(fn)[1].lower()
             if ext not in exts_lower:
                 continue
+            # 跳过已经转换过的文件（文件名包含 _h265）
+            if "_h265" in fn.lower():
+                continue
             # 输出目标固定为 _h265.mp4；若已有 _h265.mp4 且无需覆盖则跳过
             full = os.path.join(dirpath, fn)
             try:
@@ -331,7 +335,7 @@ def main():
 
     print(f"扫描目录: {args.root}")
     print(f"使用扩展名: {', '.join(exts)}")
-    print("转换规则: 非mp4+HEVC remux | 其它 transcode -> mp4+h265")
+    print("转换规则: 跳过已转换(_h265) | 非mp4+HEVC remux | 其它 transcode -> mp4+h265")
 
     tasks = collect_tasks(args.root, exts, args.overwrite)
     if not tasks:
