@@ -1,7 +1,7 @@
 # 创建并写入 DEB822 格式的源文件
 echo "Types: deb
 URIs: https://deb.xanmod.org
-Suites: releases
+Suites: $(lsb_release -sc)
 Components: main
 Signed-By: /etc/apt/keyrings/xanmod-archive-keyring.gpg" | sudo tee /etc/apt/sources.list.d/xanmod.sources > /dev/null
 
