@@ -24,11 +24,6 @@
     --overwrite      覆盖已存在的 *_h265.mp4
     --delete-source  成功后删除源文件
     --extensions     需要扫描的扩展名(逗号分隔)，默认内置常见视频格式
-
-注意:
-    1. 需要 ffmpeg/ffprobe 且支持 hevc_amf。
-    2. 使用 ffprobe 判定是否已是 HEVC mp4，失败则按需转码(更保守)。
-    3. 若想保留字幕可后续添加选项。
 """
 import argparse
 import os
@@ -187,9 +182,9 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
             ext = os.path.splitext(fn)[1].lower()
             if ext not in exts_lower:
                 continue
-            # 跳过已经转换过的文件（文件名包含 _h265）
-            if "_h265" in fn.lower():
-                continue
+            # # 跳过已经转换过的文件（文件名包含 _h265）
+            # if "_h265" in fn.lower():
+            #     continue
             # 输出目标固定为 _h265.mp4；若已有 _h265.mp4 且无需覆盖则跳过
             full = os.path.join(dirpath, fn)
             try:
