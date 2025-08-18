@@ -182,9 +182,9 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
             ext = os.path.splitext(fn)[1].lower()
             if ext not in exts_lower:
                 continue
-            # # 跳过已经转换过的文件（文件名包含 _h265）
-            # if "_h265" in fn.lower():
-            #     continue
+            # 跳过已经转换过的文件（文件名包含 _h265）
+            if "_h265" in fn.lower():
+                continue
             # 输出目标固定为 _h265.mp4；若已有 _h265.mp4 且无需覆盖则跳过
             full = os.path.join(dirpath, fn)
             try:
