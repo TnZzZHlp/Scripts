@@ -1,36 +1,189 @@
 - name: Upgrade Xray
   hosts: gfw
+  become: true
+  vars:
+    xray_temp_dir: "/tmp/xray-upgrade-{{ ansible_date_time.epoch }}"
+    xray_binary_path: "/usr/local/bin/xray"
+    xray_backup_path: "/usr/local/bin/xray.backup.{{ ansible_date_time.epoch }}"
+
   tasks:
-    - name: Download Xray
+    - name: Check if Xray service exists
+      ansible.builtin.systemd:
+        name: xray
+      register: xray_service_status
+      failed_when: false
+
+    - name: Get current Xray version
+      ansible.builtin.command:
+        cmd: "{{ xray_binary_path }} version"
+      register: current_xray_version
+      failed_when: false
+      changed_when: false
+      when: xray_service_status.status is defined
+
+    - name: Create temporary directory with unique name
+      ansible.builtin.file:
+        path: "{{ xray_temp_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Download latest Xray release
       ansible.builtin.get_url:
         url: "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
-        dest: "/tmp/xray-linux-64.zip"
-
-    - name: Create temporary directory
-      ansible.builtin.file:
-        path: "/tmp/xray"
-        state: directory
+        dest: "{{ xray_temp_dir }}/xray-linux-64.zip"
+        mode: "0644"
+        timeout: 30
+        validate_certs: true
+      register: download_result
 
     - name: Unarchive Xray
       ansible.builtin.unarchive:
-        src: "/tmp/xray-linux-64.zip"
-        dest: "/tmp/xray"
-        remote_src: yes
+        src: "{{ xray_temp_dir }}/xray-linux-64.zip"
+        dest: "{{ xray_temp_dir }}"
+        remote_src: true
         mode: "0755"
+        creates: "{{ xray_temp_dir }}/xray"
 
-    - name: Move Xray binary
+    - name: Verify downloaded Xray binary
       ansible.builtin.command:
-        cmd: mv /tmp/xray/xray /usr/local/bin/
+        cmd: "{{ xray_temp_dir }}/xray version"
+      register: new_xray_version
+      changed_when: false
 
-    - name: Clean up
+    - name: Extract version numbers for comparison
+      ansible.builtin.set_fact:
+        current_version: "{{ current_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first | default('0.0.0') }}"
+        new_version: "{{ new_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first }}"
+      when: current_xray_version.stdout is defined
+
+    - name: Set current version to 0.0.0 if Xray not installed
+      ansible.builtin.set_fact:
+        current_version: "0.0.0"
+      when: current_xray_version.stdout is not defined
+
+    - name: Set new version when current not defined
+      ansible.builtin.set_fact:
+        new_version: "{{ new_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first }}"
+      when: current_xray_version.stdout is not defined
+
+    - name: Display version information
+      ansible.builtin.debug:
+        msg: |
+          Current version: {{ current_xray_version.stdout | default('Not installed') }}
+          New version: {{ new_xray_version.stdout }}
+          Current version number: {{ current_version }}
+          New version number: {{ new_version }}
+
+    - name: Check if update is needed
+      ansible.builtin.set_fact:
+        update_needed: "{{ new_version is version(current_version, '>') }}"
+
+    - name: Display update status
+      ansible.builtin.debug:
+        msg: |
+          {% if update_needed %}
+          Update needed: Current version {{ current_version }} < New version {{ new_version }}
+          {% else %}
+          No update needed: Current version {{ current_version }} >= New version {{ new_version }}
+          {% endif %}
+
+    - name: Skip upgrade if no update needed
+      ansible.builtin.meta: end_play
+      when: not update_needed
+
+    - name: Stop Xray service before upgrade
+      ansible.builtin.systemd:
+        name: xray
+        state: stopped
+      when: 
+        - xray_service_status.status is defined
+        - update_needed
+      ignore_errors: true
+
+    - name: Backup existing Xray binary
+      ansible.builtin.copy:
+        src: "{{ xray_binary_path }}"
+        dest: "{{ xray_backup_path }}"
+        remote_src: true
+        mode: "0755"
+      when: 
+        - xray_service_status.status is defined
+        - update_needed
+      ignore_errors: true
+
+    - name: Install new Xray binary
+      ansible.builtin.copy:
+        src: "{{ xray_temp_dir }}/xray"
+        dest: "{{ xray_binary_path }}"
+        remote_src: true
+        mode: "0755"
+        owner: root
+        group: root
+        backup: true
+      when: update_needed
+      notify: restart xray
+
+    - name: Verify new Xray installation
+      ansible.builtin.command:
+        cmd: "{{ xray_binary_path }} version"
+      register: installed_version
+      changed_when: false
+      when: update_needed
+
+    - name: Start and enable Xray service
+      ansible.builtin.systemd:
+        name: xray
+        state: started
+        enabled: true
+        daemon_reload: true
+      when: 
+        - xray_service_status.status is defined
+        - update_needed
+
+    - name: Wait for Xray service to be ready
+      ansible.builtin.wait_for:
+        timeout: 10
+      when: 
+        - xray_service_status.status is defined
+        - update_needed
+
+    - name: Verify Xray service status
+      ansible.builtin.systemd:
+        name: xray
+      register: final_service_status
+      when: 
+        - xray_service_status.status is defined
+        - update_needed
+
+    - name: Clean up temporary files
       ansible.builtin.file:
-        path:
-          - "/tmp/xray-linux-64.zip"
-          - "/tmp/xray"
+        path: "{{ xray_temp_dir }}"
         state: absent
 
-    - name: Restart Xray service
+    - name: Remove old backup files (keep only latest 3)
+      ansible.builtin.shell: |
+        cd /usr/local/bin
+        ls -t xray.backup.* 2>/dev/null | tail -n +4 | xargs rm -f
+      ignore_errors: true
+      changed_when: false
+      when: update_needed
+
+    - name: Display upgrade result
+      ansible.builtin.debug:
+        msg: |
+          {% if update_needed %}
+          Xray upgrade completed successfully!
+          Installed version: {{ installed_version.stdout }}
+          Service status: {{ final_service_status.status.ActiveState | default('Unknown') }}
+          {% else %}
+          No upgrade performed - Xray is already up to date!
+          Current version: {{ current_version }}
+          {% endif %}
+
+  handlers:
+    - name: restart xray
       ansible.builtin.systemd:
         name: xray
         state: restarted
-        enabled: yes
+        enabled: true
+      listen: restart xray
