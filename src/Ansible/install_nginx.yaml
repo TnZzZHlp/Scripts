@@ -1,0 +1,37 @@
+- name: Install Nginx
+  hosts: all
+  tasks:
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        update_cache: yes
+        pkg:
+          - curl
+          - gnupg2
+          - ca-certificates
+          - lsb-release
+          - debian-archive-keyring
+
+    - name: Download gpg key
+      ansible.builtin.shell: |
+        mkdir -p /etc/apt/keyrings
+        curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor | sudo tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+
+    - name: Create Nginx APT sources file
+      ansible.builtin.copy:
+        content: |
+          Types: deb
+          URIs: http://nginx.org/packages/mainline/debian
+          Suites: trixie
+          Components: nginx
+          Signed-By: /usr/share/keyrings/nginx-archive-keyring.gpg
+        dest: /etc/apt/sources.list.d/nginx.sources
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Install Syncthing
+      ansible.builtin.apt:
+        update_cache: yes
+        name: syncthing
+        state: latest

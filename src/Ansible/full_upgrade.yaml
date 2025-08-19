@@ -1,0 +1,10 @@
+- name: Full upgrade
+  hosts: all
+  tasks:
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: full
+
+    - name: Remove unused packages
+      ansible.builtin.apt:
+        autoremove: yes

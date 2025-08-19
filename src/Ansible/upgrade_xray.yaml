@@ -1,0 +1,36 @@
+- name: Upgrade Xray
+  hosts: gfw
+  tasks:
+    - name: Download Xray
+      ansible.builtin.get_url:
+        url: "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
+        dest: "/tmp/xray-linux-64.zip"
+
+    - name: Create temporary directory
+      ansible.builtin.file:
+        path: "/tmp/xray"
+        state: directory
+
+    - name: Unarchive Xray
+      ansible.builtin.unarchive:
+        src: "/tmp/xray-linux-64.zip"
+        dest: "/tmp/xray"
+        remote_src: yes
+        mode: "0755"
+
+    - name: Move Xray binary
+      ansible.builtin.command:
+        cmd: mv /tmp/xray/xray /usr/local/bin/
+
+    - name: Clean up
+      ansible.builtin.file:
+        path:
+          - "/tmp/xray-linux-64.zip"
+          - "/tmp/xray"
+        state: absent
+
+    - name: Restart Xray service
+      ansible.builtin.systemd:
+        name: xray
+        state: restarted
+        enabled: yes
