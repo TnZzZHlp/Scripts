@@ -15,12 +15,27 @@
     - 输出容器统一 mp4，文件名追加 _h265.mp4。
 
 用法:
-    python batch_convert_big_amd_h265.py <目录路径> [--qp 23] [--quality balanced] [--overwrite] [--delete-source] [--extensions ".mkv,.mp4"]
+    python batch_convert_big_amd_h265.py <目录路径> [--qp 23] [--quality balanced] [--usage high_quality] [--profile main] [--tier main] [--min-qp-i 15] [--max-qp-i 35] [--min-qp-p 18] [--max-qp-p 40] [--vbaq] [--preencode] [--preanalysis] [--caq-strength medium] [--me-half-pel] [--me-quarter-pel] [--max-size 1800] [--two-pass] [--overwrite] [--delete-source] [--extensions ".mkv,.mp4"]
 
 参数说明:
     <目录路径>      根目录
     --qp             质量(AMF CQP qp 0~51)，默认 23 (越大压缩越高画质越差)
     --quality        AMF quality: speed | balanced | quality
+    --usage          编码用途: transcoding | ultralowlatency | lowlatency | webcam | high_quality | lowlatency_high_quality
+    --profile        编码Profile: main | main10 (默认main)
+    --tier           编码Tier: main | high (默认main)
+    --min-qp-i       I帧最小QP值 (0-51)
+    --max-qp-i       I帧最大QP值 (0-51)
+    --min-qp-p       P帧最小QP值 (0-51)
+    --max-qp-p       P帧最大QP值 (0-51)
+    --vbaq           启用VBAQ(Variance Based Adaptive Quantization)
+    --preencode      启用预编码分析
+    --preanalysis    启用预分析
+    --caq-strength   内容自适应量化强度: low | medium | high
+    --me-half-pel    启用半像素运动估计
+    --me-quarter-pel 启用四分之一像素运动估计
+    --max-size       输出文件最大大小限制(MB)，默认1800MB(约1.8GB)
+    --two-pass       启用两遍编码以更精确控制文件大小
     --overwrite      覆盖已存在的 *_h265.mp4
     --delete-source  成功后删除源文件
     --extensions     需要扫描的扩展名(逗号分隔)，默认内置常见视频格式
@@ -53,6 +68,29 @@ def human_size(num: int) -> str:
             return f"{size:.2f} {unit}"
         size /= 1024.0
     return f"{size:.2f} TB"
+
+
+@dataclass
+class EncodeOptions:
+    """编码参数配置"""
+
+    qp: int = 23
+    quality: str = "balanced"
+    usage: str | None = None
+    profile: str | None = None
+    tier: str | None = None
+    min_qp_i: int | None = None
+    max_qp_i: int | None = None
+    min_qp_p: int | None = None
+    max_qp_p: int | None = None
+    vbaq: bool = False
+    preencode: bool = False
+    preanalysis: bool = False
+    caq_strength: str | None = None
+    me_half_pel: bool = False
+    me_quarter_pel: bool = False
+    max_size_mb: int | None = None
+    two_pass: bool = False
 
 
 @dataclass
@@ -94,6 +132,56 @@ def probe_video_codec(path: str) -> str | None:
     except Exception:
         return None
     return None
+
+
+def probe_video_duration(path: str) -> float | None:
+    """获取视频时长(秒)"""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nw=1:nk=1",
+                path,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        if result.returncode == 0:
+            duration_str = result.stdout.strip()
+            if duration_str:
+                return float(duration_str)
+    except Exception:
+        return None
+    return None
+
+
+def calculate_target_bitrate(duration_seconds: float, target_size_mb: int) -> int:
+    """根据时长和目标文件大小计算目标码率(kbps)
+    预留10%空间给音频和开销
+    """
+    if duration_seconds <= 0:
+        return 1000  # 默认码率
+
+    target_size_bits = target_size_mb * 1024 * 1024 * 8  # 转换为bits
+    # 预留10%给音频和容器开销
+    video_bits = target_size_bits * 0.9
+    target_bitrate_bps = video_bits / duration_seconds
+    target_bitrate_kbps = int(target_bitrate_bps / 1000)
+
+    # 设置合理的范围限制
+    min_bitrate = 500  # 最小500kbps
+    max_bitrate = 10000  # 最大10Mbps
+
+    return max(min_bitrate, min(max_bitrate, target_bitrate_kbps))
 
 
 def is_valid_video(target_path: str, source_path: str | None = None) -> bool:
@@ -220,7 +308,7 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
     return tasks
 
 
-def build_ffmpeg_cmd(task: "Task", qp: int, quality: str) -> List[str]:
+def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
     """根据任务类型构建命令:
     remux: 视频/音频 copy -> mp4 (丢字幕)
     transcode: 视频 hevc_amf, 音频 copy -> mp4 (丢字幕)
@@ -243,18 +331,106 @@ def build_ffmpeg_cmd(task: "Task", qp: int, quality: str) -> List[str]:
     if task.action == "remux":
         base.extend(["-c:v", "copy"])
     else:  # transcode
-        base.extend(
-            [
-                "-c:v",
-                "hevc_amf",
-                "-rc",
-                "cqp",
-                "-qp",
-                str(qp),
-                "-quality",
-                quality,
-            ]
-        )
+        # 如果设置了文件大小限制，使用码率控制而不是CQP
+        if options.max_size_mb:
+            duration = probe_video_duration(task.src)
+            if duration:
+                target_bitrate = calculate_target_bitrate(duration, options.max_size_mb)
+                print(
+                    f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {options.max_size_mb}MB)"
+                )
+
+                if options.two_pass:
+                    # 两遍编码模式 - 这里只返回第一遍命令，第二遍需要单独处理
+                    base.extend(
+                        [
+                            "-c:v",
+                            "hevc_amf",
+                            "-rc",
+                            "vbr_peak",
+                            "-b:v",
+                            f"{target_bitrate}k",
+                            "-maxrate",
+                            f"{int(target_bitrate * 1.2)}k",
+                            "-bufsize",
+                            f"{int(target_bitrate * 2)}k",
+                        ]
+                    )
+                else:
+                    # 单遍VBR编码
+                    base.extend(
+                        [
+                            "-c:v",
+                            "hevc_amf",
+                            "-rc",
+                            "vbr_peak",
+                            "-b:v",
+                            f"{target_bitrate}k",
+                            "-maxrate",
+                            f"{int(target_bitrate * 1.1)}k",
+                            "-bufsize",
+                            f"{int(target_bitrate * 1.5)}k",
+                            "-quality",
+                            options.quality,
+                        ]
+                    )
+            else:
+                print("  警告: 无法获取视频时长，使用CQP模式")
+                base.extend(
+                    [
+                        "-c:v",
+                        "hevc_amf",
+                        "-rc",
+                        "cqp",
+                        "-qp",
+                        str(options.qp),
+                        "-quality",
+                        options.quality,
+                    ]
+                )
+        else:
+            # 原有的CQP模式
+            base.extend(
+                [
+                    "-c:v",
+                    "hevc_amf",
+                    "-rc",
+                    "cqp",
+                    "-qp",
+                    str(options.qp),
+                    "-quality",
+                    options.quality,
+                ]
+            )
+
+        # 添加其他编码参数
+        if options.usage:
+            base.extend(["-usage", options.usage])
+        if options.profile:
+            base.extend(["-profile", options.profile])
+        if options.tier:
+            base.extend(["-profile_tier", options.tier])
+        if options.min_qp_i is not None:
+            base.extend(["-min_qp_i", str(options.min_qp_i)])
+        if options.max_qp_i is not None:
+            base.extend(["-max_qp_i", str(options.max_qp_i)])
+        if options.min_qp_p is not None:
+            base.extend(["-min_qp_p", str(options.min_qp_p)])
+        if options.max_qp_p is not None:
+            base.extend(["-max_qp_p", str(options.max_qp_p)])
+        if options.vbaq:
+            base.extend(["-vbaq", "true"])
+        if options.preencode:
+            base.extend(["-preencode", "true"])
+        if options.preanalysis:
+            base.extend(["-preanalysis", "true"])
+        if options.caq_strength:
+            base.extend(["-pa_caq_strength", options.caq_strength])
+        if options.me_half_pel:
+            base.extend(["-me_half_pel", "true"])
+        if options.me_quarter_pel:
+            base.extend(["-me_quarter_pel", "true"])
+
     base.append(task.dst)
     return base
 
@@ -300,6 +476,89 @@ def main():
         help="AMF quality 级别，默认 balanced",
     )
     parser.add_argument(
+        "--usage",
+        choices=[
+            "transcoding",
+            "ultralowlatency",
+            "lowlatency",
+            "webcam",
+            "high_quality",
+            "lowlatency_high_quality",
+        ],
+        help="编码用途，默认无指定",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=["main", "main10"],
+        help="编码Profile，默认无指定",
+    )
+    parser.add_argument(
+        "--tier",
+        choices=["main", "high"],
+        help="编码Tier，默认无指定",
+    )
+    parser.add_argument(
+        "--min-qp-i",
+        type=int,
+        help="I帧最小QP值(0-51)",
+    )
+    parser.add_argument(
+        "--max-qp-i",
+        type=int,
+        help="I帧最大QP值(0-51)",
+    )
+    parser.add_argument(
+        "--min-qp-p",
+        type=int,
+        help="P帧最小QP值(0-51)",
+    )
+    parser.add_argument(
+        "--max-qp-p",
+        type=int,
+        help="P帧最大QP值(0-51)",
+    )
+    parser.add_argument(
+        "--vbaq",
+        action="store_true",
+        help="启用VBAQ(Variance Based Adaptive Quantization)",
+    )
+    parser.add_argument(
+        "--preencode",
+        action="store_true",
+        help="启用预编码分析",
+    )
+    parser.add_argument(
+        "--preanalysis",
+        action="store_true",
+        help="启用预分析",
+    )
+    parser.add_argument(
+        "--caq-strength",
+        choices=["low", "medium", "high"],
+        help="内容自适应量化强度",
+    )
+    parser.add_argument(
+        "--me-half-pel",
+        action="store_true",
+        help="启用半像素运动估计",
+    )
+    parser.add_argument(
+        "--me-quarter-pel",
+        action="store_true",
+        help="启用四分之一像素运动估计",
+    )
+    parser.add_argument(
+        "--max-size",
+        type=int,
+        default=1800,
+        help="输出文件最大大小限制(MB)，默认1800MB(约1.8GB)，设为0禁用",
+    )
+    parser.add_argument(
+        "--two-pass",
+        action="store_true",
+        help="启用两遍编码以更精确控制文件大小(仅在设置max-size时有效)",
+    )
+    parser.add_argument(
         "--overwrite", action="store_true", help="覆盖已存在的 *_h265 输出文件"
     )
     parser.add_argument(
@@ -314,6 +573,27 @@ def main():
     if args.qp < 0 or args.qp > 51:
         print("qp 应在 0~51 之间")
         return 1
+
+    # 创建编码选项对象
+    options = EncodeOptions(
+        qp=args.qp,
+        quality=args.quality,
+        usage=args.usage,
+        profile=args.profile,
+        tier=args.tier,
+        min_qp_i=getattr(args, "min_qp_i", None),
+        max_qp_i=getattr(args, "max_qp_i", None),
+        min_qp_p=getattr(args, "min_qp_p", None),
+        max_qp_p=getattr(args, "max_qp_p", None),
+        vbaq=args.vbaq,
+        preencode=args.preencode,
+        preanalysis=args.preanalysis,
+        caq_strength=getattr(args, "caq_strength", None),
+        me_half_pel=getattr(args, "me_half_pel", False),
+        me_quarter_pel=getattr(args, "me_quarter_pel", False),
+        max_size_mb=args.max_size if args.max_size > 0 else None,
+        two_pass=args.two_pass,
+    )
 
     if args.extensions:
         exts = [
@@ -330,6 +610,13 @@ def main():
 
     print(f"扫描目录: {args.root}")
     print(f"使用扩展名: {', '.join(exts)}")
+    if options.max_size_mb:
+        print(
+            f"文件大小限制: {options.max_size_mb}MB (约{options.max_size_mb/1024:.1f}GB)"
+        )
+        print("编码模式: VBR码率控制")
+    else:
+        print(f"编码模式: CQP质量控制 (QP={options.qp})")
     print("转换规则: 跳过已转换(_h265) | 非mp4+HEVC remux | 其它 transcode -> mp4+h265")
 
     tasks = collect_tasks(args.root, exts, args.overwrite)
@@ -345,12 +632,25 @@ def main():
         print("=" * 80)
         print(f"[{idx}/{len(tasks)}] 转码: {task.src}")
         print(f"大小: {human_size(task.size)}")
-        cmd = build_ffmpeg_cmd(task, args.qp, args.quality)
+        cmd = build_ffmpeg_cmd(task, options)
         ret = run_cmd(cmd)
         if ret == 0 and os.path.exists(task.dst):
+            output_size = os.path.getsize(task.dst)
             success += 1
-            ratio = os.path.getsize(task.dst) / task.size
+            ratio = output_size / task.size
             print(f"完成 -> 压缩比: {ratio:.2%}")
+
+            # 检查文件大小是否超出限制
+            if options.max_size_mb:
+                max_size_bytes = options.max_size_mb * 1024 * 1024
+                if output_size > max_size_bytes:
+                    print(
+                        f"警告: 输出文件 {human_size(output_size)} 超过限制 {options.max_size_mb}MB"
+                    )
+                    # 可以选择重新编码或调整参数
+                else:
+                    print(f"文件大小: {human_size(output_size)} (在限制内)")
+
             if args.delete_source:
                 try:
                     os.remove(task.src)
