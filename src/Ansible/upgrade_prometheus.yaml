@@ -1,5 +1,5 @@
 - name: Upgrade Prometheus
-  hosts: all
+  hosts: prometheus
   vars:
     prometheus_user: root
     prometheus_binary_path: /usr/local/bin/prometheus

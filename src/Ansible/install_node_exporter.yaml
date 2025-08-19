@@ -1,5 +1,5 @@
 - name: Install Node Exporter
-  hosts: all
+  hosts: node_exporter
   vars:
     node_exporter_user: root
     node_exporter_binary_path: /usr/local/bin/node_exporter
