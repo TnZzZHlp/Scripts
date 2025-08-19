@@ -1,0 +1,189 @@
+- name: Upgrade Prometheus
+  hosts: all
+  vars:
+    prometheus_user: root
+    prometheus_binary_path: /usr/local/bin/prometheus
+    prometheus_config_dir: /etc/prometheus
+    prometheus_config_file: /etc/prometheus/prometheus.yml
+    prometheus_service_path: /etc/systemd/system/prometheus.service
+    temp_dir: /tmp
+    backup_dir: /opt/backups/prometheus
+
+  tasks:
+    - name: Check if Prometheus is installed
+      stat:
+        path: "{{ prometheus_binary_path }}"
+      register: prometheus_binary
+
+    - name: Fail if Prometheus is not installed
+      fail:
+        msg: "Prometheus 未安装，请先运行安装 playbook。"
+      when: not prometheus_binary.stat.exists
+
+    - name: Get current Prometheus version
+      command: "{{ prometheus_binary_path }} --version"
+      register: current_version_output
+      failed_when: false
+      changed_when: false
+
+    - name: Extract current version number
+      set_fact:
+        current_version: "{{ current_version_output.stdout | regex_search('prometheus, version ([0-9.]+)', '\\1') | first }}"
+      when: current_version_output.rc == 0
+
+    - name: Display current version
+      debug:
+        msg: "当前 Prometheus 版本: {{ current_version | default('未知') }}"
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - jq
+          - tar
+        state: present
+
+    - name: Get latest Prometheus release information
+      uri:
+        url: https://api.github.com/repos/prometheus/prometheus/releases/latest
+        method: GET
+        return_content: yes
+      register: github_release
+
+    - name: Extract latest version and download URL
+      set_fact:
+        latest_version: "{{ github_release.json.tag_name | regex_replace('^v', '') }}"
+        download_url: "{{ github_release.json.assets | selectattr('name', 'search', 'linux-amd64') | map(attribute='browser_download_url') | first }}"
+
+    - name: Display latest version
+      debug:
+        msg: "最新 Prometheus 版本: {{ latest_version }}"
+
+    - name: Check if upgrade is needed
+      set_fact:
+        upgrade_needed: "{{ current_version | default('0.0.0') != latest_version }}"
+
+    - name: Skip upgrade if already up to date
+      debug:
+        msg: "Prometheus 已是最新版本 ({{ latest_version }})，跳过升级。"
+      when: not upgrade_needed
+
+    - name: Continue with upgrade process
+      block:
+        - name: Fail if download URL not found
+          fail:
+            msg: "无法获取 Prometheus 下载链接，请检查网络连接或 GitHub API 状态。"
+          when: download_url is not defined or download_url == ""
+
+        - name: Create backup directory
+          file:
+            path: "{{ backup_dir }}"
+            state: directory
+            mode: "0755"
+
+        - name: Stop Prometheus service before upgrade
+          systemd:
+            name: prometheus
+            state: stopped
+
+        - name: Backup current Prometheus binary
+          copy:
+            src: "{{ prometheus_binary_path }}"
+            dest: "{{ backup_dir }}/prometheus_{{ current_version | default('unknown') }}_{{ ansible_date_time.epoch }}"
+            mode: "0755"
+            remote_src: yes
+
+        - name: Backup current Prometheus configuration
+          copy:
+            src: "{{ prometheus_config_file }}"
+            dest: "{{ backup_dir }}/prometheus.yml_{{ current_version | default('unknown') }}_{{ ansible_date_time.epoch }}"
+            mode: "0644"
+            remote_src: yes
+
+        - name: Download new Prometheus version
+          get_url:
+            url: "{{ download_url }}"
+            dest: "{{ temp_dir }}/{{ download_url | basename }}"
+            mode: "0644"
+          register: download_result
+
+        - name: Extract new Prometheus archive
+          unarchive:
+            src: "{{ download_result.dest }}"
+            dest: "{{ temp_dir }}"
+            remote_src: yes
+            creates: "{{ temp_dir }}/prometheus-*/prometheus"
+
+        - name: Find extracted directory
+          find:
+            paths: "{{ temp_dir }}"
+            patterns: "prometheus-*"
+            file_type: directory
+          register: extracted_dirs
+
+        - name: Update Prometheus binary
+          copy:
+            src: "{{ extracted_dirs.files[0].path }}/prometheus"
+            dest: "{{ prometheus_binary_path }}"
+            mode: "0755"
+            owner: root
+            group: root
+            remote_src: yes
+
+        - name: Reload systemd daemon
+          systemd:
+            daemon_reload: yes
+
+        - name: Start Prometheus service
+          systemd:
+            name: prometheus
+            state: started
+            enabled: yes
+
+        - name: Wait for Prometheus to be ready
+          uri:
+            url: "http://localhost:9090/-/ready"
+            method: GET
+            status_code: 200
+          register: prometheus_ready
+          until: prometheus_ready.status == 200
+          retries: 30
+          delay: 2
+          ignore_errors: yes
+
+        - name: Verify Prometheus upgrade
+          command: "{{ prometheus_binary_path }} --version"
+          register: new_version_output
+          changed_when: false
+
+        - name: Extract new version number
+          set_fact:
+            new_version: "{{ new_version_output.stdout | regex_search('prometheus, version ([0-9.]+)', '\\1') | first }}"
+
+        - name: Display upgrade result
+          debug:
+            msg: "Prometheus 已成功升级从 {{ current_version | default('未知') }} 到 {{ new_version }}"
+
+        - name: Clean up downloaded files
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ download_result.dest }}"
+            - "{{ extracted_dirs.files[0].path }}"
+          when: extracted_dirs.files is defined and extracted_dirs.files | length > 0
+
+        - name: Display upgrade completion message
+          debug:
+            msg: "Prometheus 升级完成！新版本: {{ new_version }}"
+
+      when: upgrade_needed
+
+    - name: Display service status
+      systemd:
+        name: prometheus
+      register: prometheus_status
+
+    - name: Show Prometheus service status
+      debug:
+        msg: "Prometheus 服务状态: {{ prometheus_status.status.ActiveState }}"
