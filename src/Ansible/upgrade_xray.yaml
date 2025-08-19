@@ -21,11 +21,57 @@
       changed_when: false
       when: xray_service_status.status is defined
 
+    - name: Get latest Xray release information from GitHub API
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/XTLS/Xray-core/releases/latest
+        method: GET
+        return_content: true
+        timeout: 30
+      register: github_release
+
+    - name: Extract version numbers for comparison
+      ansible.builtin.set_fact:
+        current_version: "{{ current_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first | default('0.0.0') }}"
+        latest_version: "{{ github_release.json.tag_name | regex_replace('^v', '') }}"
+      when: current_xray_version.stdout is defined
+
+    - name: Set current version to 0.0.0 if Xray not installed
+      ansible.builtin.set_fact:
+        current_version: "0.0.0"
+        latest_version: "{{ github_release.json.tag_name | regex_replace('^v', '') }}"
+      when: current_xray_version.stdout is not defined
+
+    - name: Display version information
+      ansible.builtin.debug:
+        msg: |
+          Current version: {{ current_xray_version.stdout | default('Not installed') }}
+          Latest available version: {{ latest_version }}
+          Current version number: {{ current_version }}
+          Latest version number: {{ latest_version }}
+
+    - name: Check if update is needed
+      ansible.builtin.set_fact:
+        update_needed: "{{ latest_version is version(current_version, '>') }}"
+
+    - name: Display update status
+      ansible.builtin.debug:
+        msg: |
+          {% if update_needed %}
+          Update needed: Current version {{ current_version }} < Latest version {{ latest_version }}
+          {% else %}
+          No update needed: Current version {{ current_version }} >= Latest version {{ latest_version }}
+          {% endif %}
+
+    - name: Skip upgrade if no update needed
+      ansible.builtin.meta: end_play
+      when: not update_needed
+
     - name: Create temporary directory with unique name
       ansible.builtin.file:
         path: "{{ xray_temp_dir }}"
         state: directory
         mode: "0700"
+      when: update_needed
 
     - name: Download latest Xray release
       ansible.builtin.get_url:
@@ -35,6 +81,7 @@
         timeout: 30
         validate_certs: true
       register: download_result
+      when: update_needed
 
     - name: Unarchive Xray
       ansible.builtin.unarchive:
@@ -43,59 +90,20 @@
         remote_src: true
         mode: "0755"
         creates: "{{ xray_temp_dir }}/xray"
+      when: update_needed
 
     - name: Verify downloaded Xray binary
       ansible.builtin.command:
         cmd: "{{ xray_temp_dir }}/xray version"
       register: new_xray_version
       changed_when: false
-
-    - name: Extract version numbers for comparison
-      ansible.builtin.set_fact:
-        current_version: "{{ current_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first | default('0.0.0') }}"
-        new_version: "{{ new_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first }}"
-      when: current_xray_version.stdout is defined
-
-    - name: Set current version to 0.0.0 if Xray not installed
-      ansible.builtin.set_fact:
-        current_version: "0.0.0"
-      when: current_xray_version.stdout is not defined
-
-    - name: Set new version when current not defined
-      ansible.builtin.set_fact:
-        new_version: "{{ new_xray_version.stdout | regex_search('Xray ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first }}"
-      when: current_xray_version.stdout is not defined
-
-    - name: Display version information
-      ansible.builtin.debug:
-        msg: |
-          Current version: {{ current_xray_version.stdout | default('Not installed') }}
-          New version: {{ new_xray_version.stdout }}
-          Current version number: {{ current_version }}
-          New version number: {{ new_version }}
-
-    - name: Check if update is needed
-      ansible.builtin.set_fact:
-        update_needed: "{{ new_version is version(current_version, '>') }}"
-
-    - name: Display update status
-      ansible.builtin.debug:
-        msg: |
-          {% if update_needed %}
-          Update needed: Current version {{ current_version }} < New version {{ new_version }}
-          {% else %}
-          No update needed: Current version {{ current_version }} >= New version {{ new_version }}
-          {% endif %}
-
-    - name: Skip upgrade if no update needed
-      ansible.builtin.meta: end_play
-      when: not update_needed
+      when: update_needed
 
     - name: Stop Xray service before upgrade
       ansible.builtin.systemd:
         name: xray
         state: stopped
-      when: 
+      when:
         - xray_service_status.status is defined
         - update_needed
       ignore_errors: true
@@ -106,7 +114,7 @@
         dest: "{{ xray_backup_path }}"
         remote_src: true
         mode: "0755"
-      when: 
+      when:
         - xray_service_status.status is defined
         - update_needed
       ignore_errors: true
@@ -136,14 +144,14 @@
         state: started
         enabled: true
         daemon_reload: true
-      when: 
+      when:
         - xray_service_status.status is defined
         - update_needed
 
     - name: Wait for Xray service to be ready
       ansible.builtin.wait_for:
         timeout: 10
-      when: 
+      when:
         - xray_service_status.status is defined
         - update_needed
 
@@ -151,7 +159,7 @@
       ansible.builtin.systemd:
         name: xray
       register: final_service_status
-      when: 
+      when:
         - xray_service_status.status is defined
         - update_needed
 
@@ -173,11 +181,13 @@
         msg: |
           {% if update_needed %}
           Xray upgrade completed successfully!
-          Installed version: {{ installed_version.stdout }}
+          Previous version: {{ current_version }}
+          Installed version: {{ latest_version }}
           Service status: {{ final_service_status.status.ActiveState | default('Unknown') }}
           {% else %}
           No upgrade performed - Xray is already up to date!
           Current version: {{ current_version }}
+          Latest available: {{ latest_version }}
           {% endif %}
 
   handlers:
