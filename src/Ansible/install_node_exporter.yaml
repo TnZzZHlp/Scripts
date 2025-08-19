@@ -1,0 +1,108 @@
+- name: Install Node Exporter
+  hosts: all
+  vars:
+    node_exporter_user: root
+    node_exporter_binary_path: /usr/local/bin/node_exporter
+    node_exporter_service_path: /etc/systemd/system/node_exporter.service
+    temp_dir: /tmp
+
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - jq
+          - tar
+        state: present
+
+    - name: Get latest Node Exporter release information
+      uri:
+        url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
+        method: GET
+        return_content: yes
+      register: github_release
+
+    - name: Extract download URL for linux-amd64
+      set_fact:
+        download_url: "{{ github_release.json.assets | selectattr('name', 'search', 'linux-amd64') | map(attribute='browser_download_url') | first }}"
+
+    - name: Fail if download URL not found
+      fail:
+        msg: "无法获取 Node Exporter 下载链接，请检查网络连接或 GitHub API 状态。"
+      when: download_url is not defined or download_url == ""
+
+    - name: Download Node Exporter
+      get_url:
+        url: "{{ download_url }}"
+        dest: "{{ temp_dir }}/{{ download_url | basename }}"
+        mode: "0644"
+      register: download_result
+
+    - name: Extract Node Exporter archive
+      unarchive:
+        src: "{{ download_result.dest }}"
+        dest: "{{ temp_dir }}"
+        remote_src: yes
+        creates: "{{ temp_dir }}/node_exporter-*/node_exporter"
+
+    - name: Find extracted directory
+      find:
+        paths: "{{ temp_dir }}"
+        patterns: "node_exporter-*"
+        file_type: directory
+      register: extracted_dirs
+
+    - name: Copy Node Exporter binary to /usr/local/bin
+      copy:
+        src: "{{ extracted_dirs.files[0].path }}/node_exporter"
+        dest: "{{ node_exporter_binary_path }}"
+        mode: "0755"
+        owner: root
+        group: root
+        remote_src: yes
+
+    - name: Create Node Exporter systemd service file
+      copy:
+        content: |
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          User={{ node_exporter_user }}
+          ExecStart={{ node_exporter_binary_path }}
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: "{{ node_exporter_service_path }}"
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Start and enable Node Exporter service
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+
+    - name: Clean up downloaded files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ download_result.dest }}"
+        - "{{ extracted_dirs.files[0].path }}"
+      when: extracted_dirs.files is defined and extracted_dirs.files | length > 0
+
+    - name: Display installation completion message
+      debug:
+        msg: "Node Exporter 安装完成！"

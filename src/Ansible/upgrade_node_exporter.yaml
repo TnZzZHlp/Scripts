@@ -1,0 +1,213 @@
+- name: Upgrade Node Exporter
+  hosts: all
+  vars:
+    node_exporter_user: root
+    node_exporter_binary_path: /usr/local/bin/node_exporter
+    node_exporter_service_path: /etc/systemd/system/node_exporter.service
+    temp_dir: /tmp
+    backup_dir: /opt/backups/node_exporter
+
+  tasks:
+    - name: Check if Node Exporter is installed
+      stat:
+        path: "{{ node_exporter_binary_path }}"
+      register: node_exporter_binary
+
+    - name: Fail if Node Exporter is not installed
+      fail:
+        msg: "Node Exporter 未安装，请先运行安装 playbook。"
+      when: not node_exporter_binary.stat.exists
+
+    - name: Get current Node Exporter version
+      command: "{{ node_exporter_binary_path }} --version"
+      register: current_version_output
+      failed_when: false
+      changed_when: false
+
+    - name: Extract current version number
+      set_fact:
+        current_version: "{{ current_version_output.stdout | regex_search('node_exporter, version ([0-9.]+)', '\\1') | first }}"
+      when: current_version_output.rc == 0
+
+    - name: Display current version
+      debug:
+        msg: "当前 Node Exporter 版本: {{ current_version | default('未知') }}"
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - jq
+          - tar
+        state: present
+
+    - name: Get latest Node Exporter release information
+      uri:
+        url: https://api.github.com/repos/prometheus/node_exporter/releases/latest
+        method: GET
+        return_content: yes
+      register: github_release
+
+    - name: Extract latest version and download URL
+      set_fact:
+        latest_version: "{{ github_release.json.tag_name | regex_replace('^v', '') }}"
+        download_url: "{{ github_release.json.assets | selectattr('name', 'search', 'linux-amd64') | map(attribute='browser_download_url') | first }}"
+
+    - name: Display latest version
+      debug:
+        msg: "最新 Node Exporter 版本: {{ latest_version }}"
+
+    - name: Check if upgrade is needed
+      set_fact:
+        upgrade_needed: "{{ current_version | default('0.0.0') != latest_version }}"
+
+    - name: Skip upgrade if already up to date
+      debug:
+        msg: "Node Exporter 已是最新版本 ({{ latest_version }})，跳过升级。"
+      when: not upgrade_needed
+
+    - name: Continue with upgrade process
+      block:
+        - name: Fail if download URL not found
+          fail:
+            msg: "无法获取 Node Exporter 下载链接，请检查网络连接或 GitHub API 状态。"
+          when: download_url is not defined or download_url == ""
+
+        - name: Create backup directory
+          file:
+            path: "{{ backup_dir }}"
+            state: directory
+            mode: "0755"
+
+        - name: Stop Node Exporter service
+          systemd:
+            name: node_exporter
+            state: stopped
+
+        - name: Backup current Node Exporter binary
+          copy:
+            src: "{{ node_exporter_binary_path }}"
+            dest: "{{ backup_dir }}/node_exporter_{{ current_version | default('unknown') }}_{{ ansible_date_time.epoch }}"
+            remote_src: yes
+            mode: "0755"
+          when: node_exporter_binary.stat.exists
+
+        - name: Download latest Node Exporter
+          get_url:
+            url: "{{ download_url }}"
+            dest: "{{ temp_dir }}/{{ download_url | basename }}"
+            mode: "0644"
+          register: download_result
+
+        - name: Extract Node Exporter archive
+          unarchive:
+            src: "{{ download_result.dest }}"
+            dest: "{{ temp_dir }}"
+            remote_src: yes
+            creates: "{{ temp_dir }}/node_exporter-*/node_exporter"
+
+        - name: Find extracted directory
+          find:
+            paths: "{{ temp_dir }}"
+            patterns: "node_exporter-*"
+            file_type: directory
+          register: extracted_dirs
+
+        - name: Update Node Exporter binary
+          copy:
+            src: "{{ extracted_dirs.files[0].path }}/node_exporter"
+            dest: "{{ node_exporter_binary_path }}"
+            mode: "0755"
+            owner: root
+            group: root
+            remote_src: yes
+
+        - name: Ensure Node Exporter systemd service file exists
+          copy:
+            content: |
+              [Unit]
+              Description=Node Exporter
+              After=network.target
+
+              [Service]
+              User={{ node_exporter_user }}
+              ExecStart={{ node_exporter_binary_path }}
+
+              [Install]
+              WantedBy=multi-user.target
+            dest: "{{ node_exporter_service_path }}"
+            mode: "0644"
+            owner: root
+            group: root
+
+        - name: Reload systemd daemon
+          systemd:
+            daemon_reload: yes
+
+        - name: Start Node Exporter service
+          systemd:
+            name: node_exporter
+            state: started
+            enabled: yes
+
+        - name: Wait for Node Exporter to be ready
+          wait_for:
+            port: 9100
+            host: localhost
+            delay: 2
+            timeout: 30
+
+        - name: Verify Node Exporter is running
+          uri:
+            url: http://localhost:9100/metrics
+            method: GET
+            status_code: 200
+          register: health_check
+          retries: 3
+          delay: 5
+
+        - name: Get new Node Exporter version
+          command: "{{ node_exporter_binary_path }} --version"
+          register: new_version_output
+          changed_when: false
+
+        - name: Extract new version number
+          set_fact:
+            new_version: "{{ new_version_output.stdout | regex_search('node_exporter, version ([0-9.]+)', '\\1') | first }}"
+
+        - name: Display upgrade success message
+          debug:
+            msg: "Node Exporter 升级成功！从版本 {{ current_version | default('未知') }} 升级到 {{ new_version }}"
+
+        - name: Clean up downloaded files
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ download_result.dest }}"
+            - "{{ extracted_dirs.files[0].path }}"
+          when: extracted_dirs.files is defined and extracted_dirs.files | length > 0
+
+      when: upgrade_needed
+
+      rescue:
+        - name: Restore backup if upgrade failed
+          copy:
+            src: "{{ backup_dir }}/node_exporter_{{ current_version | default('unknown') }}_{{ ansible_date_time.epoch }}"
+            dest: "{{ node_exporter_binary_path }}"
+            remote_src: yes
+            mode: "0755"
+          when: node_exporter_binary.stat.exists
+
+        - name: Start Node Exporter service after restore
+          systemd:
+            name: node_exporter
+            state: started
+
+        - name: Display rollback message
+          debug:
+            msg: "升级失败，已回滚到之前的版本。"
+
+        - name: Fail the playbook
+          fail:
+            msg: "Node Exporter 升级失败，已回滚到之前的版本。"
