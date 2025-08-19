@@ -1,5 +1,6 @@
 - name: Install Nginx
   hosts: all
+  become: yes
   tasks:
     - name: Install prerequisites
       ansible.builtin.apt:
@@ -11,27 +12,56 @@
           - lsb-release
           - debian-archive-keyring
 
-    - name: Download gpg key
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Check if Nginx signing key exists
+      ansible.builtin.stat:
+        path: /usr/share/keyrings/nginx-archive-keyring.gpg
+      register: nginx_keyring_check
+
+    - name: Download and install Nginx signing key
       ansible.builtin.shell: |
-        mkdir -p /etc/apt/keyrings
-        curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor | sudo tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+        curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+      when: not nginx_keyring_check.stat.exists
+
+    - name: Verify Nginx signing key exists
+      ansible.builtin.stat:
+        path: /usr/share/keyrings/nginx-archive-keyring.gpg
+      register: nginx_keyring
 
     - name: Create Nginx APT sources file
       ansible.builtin.copy:
         content: |
           Types: deb
           URIs: http://nginx.org/packages/mainline/debian
-          Suites: trixie
+          Suites: {{ ansible_distribution_release }}
           Components: nginx
           Signed-By: /usr/share/keyrings/nginx-archive-keyring.gpg
         dest: /etc/apt/sources.list.d/nginx.sources
         owner: root
         group: root
         mode: "0644"
-      become: true
+      when: nginx_keyring.stat.exists
 
-    - name: Install Syncthing
+    - name: Update package cache
       ansible.builtin.apt:
         update_cache: yes
-        name: syncthing
-        state: latest
+
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+
+    - name: Start and enable Nginx service
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Display installation completion message
+      ansible.builtin.debug:
+        msg: "Nginx 安装完成并已启动！"

@@ -1,5 +1,12 @@
 - name: Install Syncthing
   hosts: all
+  become: yes
+  vars:
+    syncthing_user: syncthing
+    syncthing_group: syncthing
+    syncthing_keyring_path: /etc/apt/keyrings/syncthing-archive-keyring.gpg
+    syncthing_sources_file: /etc/apt/sources.list.d/syncthing.sources
+
   tasks:
     - name: Install prerequisites
       ansible.builtin.apt:
@@ -10,11 +17,39 @@
           - ca-certificates
           - lsb-release
           - debian-archive-keyring
+        state: present
 
-    - name: Download gpg key
-      ansible.builtin.shell: |
-        mkdir -p /etc/apt/keyrings
-        curl -L -o /etc/apt/keyrings/syncthing-archive-keyring.gpg https://syncthing.net/release-key.gpg
+    - name: Create apt keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Check if Syncthing signing key exists
+      ansible.builtin.stat:
+        path: "{{ syncthing_keyring_path }}"
+      register: syncthing_keyring_check
+
+    - name: Download Syncthing GPG signing key
+      ansible.builtin.get_url:
+        url: https://syncthing.net/release-key.gpg
+        dest: "{{ syncthing_keyring_path }}"
+        mode: "0644"
+        owner: root
+        group: root
+      when: not syncthing_keyring_check.stat.exists
+
+    - name: Verify Syncthing signing key exists
+      ansible.builtin.stat:
+        path: "{{ syncthing_keyring_path }}"
+      register: syncthing_keyring
+
+    - name: Fail if GPG key download failed
+      ansible.builtin.fail:
+        msg: "无法下载 Syncthing GPG 签名密钥"
+      when: not syncthing_keyring.stat.exists
 
     - name: Create Syncthing APT sources file
       ansible.builtin.copy:
@@ -23,15 +58,38 @@
           URIs: https://apt.syncthing.net/
           Suites: syncthing
           Components: stable-v2
-          Signed-By: /etc/apt/keyrings/syncthing-archive-keyring.gpg
-        dest: /etc/apt/sources.list.d/syncthing.sources
+          Signed-By: {{ syncthing_keyring_path }}
+        dest: "{{ syncthing_sources_file }}"
         owner: root
         group: root
         mode: "0644"
-      become: true
+      when: syncthing_keyring.stat.exists
+
+    - name: Update package cache after adding repository
+      ansible.builtin.apt:
+        update_cache: yes
 
     - name: Install Syncthing
       ansible.builtin.apt:
-        update_cache: yes
         name: syncthing
-        state: latest
+        state: present
+
+    - name: Create syncthing system user
+      ansible.builtin.user:
+        name: "{{ syncthing_user }}"
+        group: "{{ syncthing_group }}"
+        system: yes
+        shell: /bin/false
+        home: /var/lib/syncthing
+        create_home: yes
+        comment: "Syncthing service user"
+
+    - name: Enable Syncthing service (but don't start it automatically)
+      ansible.builtin.systemd:
+        name: syncthing@{{ syncthing_user }}
+        enabled: yes
+
+    - name: Display installation completion message
+      ansible.builtin.debug:
+        msg: |
+          Syncthing 安装完成！
