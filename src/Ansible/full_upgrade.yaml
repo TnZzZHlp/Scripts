@@ -3,6 +3,7 @@
   tasks:
     - name: Upgrade all packages
       ansible.builtin.apt:
+        update_cache: yes
         upgrade: full
 
     - name: Remove unused packages
