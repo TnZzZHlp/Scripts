@@ -74,19 +74,9 @@
         name: syncthing
         state: present
 
-    - name: Create syncthing system user
-      ansible.builtin.user:
-        name: "{{ syncthing_user }}"
-        group: "{{ syncthing_group }}"
-        system: yes
-        shell: /bin/false
-        home: /var/lib/syncthing
-        create_home: yes
-        comment: "Syncthing service user"
-
     - name: Enable Syncthing service (but don't start it automatically)
       ansible.builtin.systemd:
-        name: syncthing@{{ syncthing_user }}
+        name: syncthing@root
         enabled: yes
 
     - name: Display installation completion message
