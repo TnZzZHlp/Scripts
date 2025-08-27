@@ -1,0 +1,7 @@
+- name: Reload Nginx
+  hosts: all
+  tasks:
+    - name: Reload Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

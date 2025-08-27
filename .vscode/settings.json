@@ -3,7 +3,8 @@
         "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook": [
             "file:///e%3A/github/Scripts/src/Ansible/install_node_exporter.yaml",
             "file:///e%3A/github/Scripts/src/Ansible/upgrade_node_exporter.yaml",
-            "file:///e%3A/github/Scripts/src/Ansible/upgrade_xray.yaml"
+            "file:///e%3A/github/Scripts/src/Ansible/upgrade_xray.yaml",
+            "file:///e%3A/github/Scripts/src/Ansible/reload_nginx.yaml"
         ]
     }
 }
