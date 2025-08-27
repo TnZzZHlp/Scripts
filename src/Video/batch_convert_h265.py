@@ -270,7 +270,7 @@ def calculate_target_bitrate(
 
     # 设置合理的范围限制
     min_bitrate = 500  # 最小500kbps
-    max_bitrate = 10000  # 最大10Mbps
+    max_bitrate = 100000  # 最大100Mbps
 
     calculated_bitrate = max(min_bitrate, min(max_bitrate, target_bitrate_kbps))
 
