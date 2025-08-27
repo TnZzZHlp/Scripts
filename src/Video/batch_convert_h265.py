@@ -134,6 +134,62 @@ def probe_video_codec(path: str) -> str | None:
     return None
 
 
+def probe_audio_codecs(path: str) -> List[str]:
+    """使用 ffprobe 获取所有音频轨的 codec_name, 失败返回空列表"""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=nw=1:nk=1",
+                path,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        if result.returncode == 0:
+            codecs = [
+                line.strip().lower()
+                for line in result.stdout.strip().split("\n")
+                if line.strip()
+            ]
+            return codecs
+    except Exception:
+        return []
+    return []
+
+
+def has_mp4_incompatible_audio(path: str) -> bool:
+    """检查是否包含 MP4 不兼容的音频编码"""
+    audio_codecs = probe_audio_codecs(path)
+    # MP4 不兼容的音频编码列表
+    incompatible_codecs = {
+        "wmav1",
+        "wmav2",
+        "wmalossless",
+        "wmapro",
+        "wmavoice",
+        "vorbis",
+        "opus",
+        "flac",
+        "tta",
+        "wavpack",
+        "dts",
+        "truehd",
+    }
+    return any(codec in incompatible_codecs for codec in audio_codecs)
+
+
 def probe_video_duration(path: str) -> float | None:
     """获取视频时长(秒)"""
     try:
@@ -329,9 +385,10 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
                 continue
             codec = probe_video_codec(full)  # 所有文件都探测
             hevc_like = codec in {"hevc", "h265"}
-            # 不再跳过任何文件，所有视频都进行转换
-            # 决策 action
-            if hevc_like and ext != ".mp4":
+            has_incompatible_audio = has_mp4_incompatible_audio(full)
+
+            # 决策 action: 如果有不兼容音频，强制转码
+            if hevc_like and ext != ".mp4" and not has_incompatible_audio:
                 action = "remux"
             else:
                 action = "transcode"
@@ -359,8 +416,11 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
 def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
     """根据任务类型构建命令:
     remux: 视频/音频 copy -> mp4 (丢字幕)
-    transcode: 视频 hevc_amf, 音频 copy -> mp4 (丢字幕)
+    transcode: 视频 hevc_amf, 音频处理 -> mp4 (丢字幕)
     """
+    # 检查音频是否需要重新编码
+    has_incompatible_audio = has_mp4_incompatible_audio(task.src)
+
     base = [
         "ffmpeg",
         "-y",
@@ -370,12 +430,18 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
         "0:v:0",
         "-map",
         "0:a?",
-        "-c:a",
-        "copy",
         "-sn",
         "-movflags",
         "+faststart",
     ]
+
+    # 音频处理：如果有不兼容音频则转为AAC，否则copy
+    if has_incompatible_audio:
+        print(f"  检测到不兼容音频编码，将转换为AAC")
+        base.extend(["-c:a", "aac", "-b:a", "128k"])
+    else:
+        base.extend(["-c:a", "copy"])
+
     if task.action == "remux":
         base.extend(["-c:v", "copy"])
     else:  # transcode
@@ -493,7 +559,8 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
     return base
 
 
-def run_cmd(cmd: List[str]) -> int:
+def run_cmd(cmd: List[str]) -> tuple[int, str]:
+    """执行命令并返回(退出码, 完整输出)"""
     # 动态刷新同一行显示包含 frame / speed 的进度（覆盖上一行）
     # Windows 默认控制台编码可能不是 UTF-8，强制使用 utf-8 并容错
     process = subprocess.Popen(
@@ -505,15 +572,22 @@ def run_cmd(cmd: List[str]) -> int:
         errors="replace",  # 避免因非法字节崩溃
     )
     assert process.stdout is not None
+
+    # 收集所有输出用于错误时显示
+    all_output = []
     prev_len = 0
+
     for line in process.stdout:
+        all_output.append(line)
         if any(key in line for key in ("frame=", "speed=")):
             text = line.rstrip()
             pad = " " * max(0, prev_len - len(text))  # 清除残余字符
             print("\r" + text + pad, end="", flush=True)
             prev_len = len(text)
+
     print()  # 结束时换行
-    return process.wait()
+    return_code = process.wait()
+    return return_code, "".join(all_output)
 
 
 def main():
@@ -691,7 +765,11 @@ def main():
         print(f"[{idx}/{len(tasks)}] 转码: {task.src}")
         print(f"大小: {human_size(task.size)}")
         cmd = build_ffmpeg_cmd(task, options)
-        ret = run_cmd(cmd)
+
+        # 显示将要执行的命令
+        print(f"执行命令: {' '.join(cmd)}")
+
+        ret, output = run_cmd(cmd)
         if ret == 0 and os.path.exists(task.dst):
             output_size = os.path.getsize(task.dst)
             success += 1
@@ -716,7 +794,16 @@ def main():
                 except Exception as e:
                     print(f"删除源文件失败: {e}")
         else:
-            print(f"失败 (exit={ret})")
+            print(f"错误: FFmpeg 转码失败 (退出码: {ret})")
+            print("=" * 80)
+            print("错误的 FFmpeg 命令:")
+            print(" ".join(cmd))
+            print("=" * 80)
+            print("完整错误输出:")
+            print(output)
+            print("=" * 80)
+            print("由于 FFmpeg 出现错误，停止后续处理")
+            return 1  # 立即退出，不继续处理其他文件
     print("=" * 80)
     print(f"完成: {success}/{len(tasks)} 成功")
     return 0 if success == len(tasks) else 2
