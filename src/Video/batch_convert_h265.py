@@ -164,9 +164,44 @@ def probe_video_duration(path: str) -> float | None:
     return None
 
 
-def calculate_target_bitrate(duration_seconds: float, target_size_mb: int) -> int:
+def probe_video_bitrate(path: str) -> int | None:
+    """获取视频首轨码率(kbps)"""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=bit_rate",
+                "-of",
+                "default=nw=1:nk=1",
+                path,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        if result.returncode == 0:
+            bitrate_str = result.stdout.strip()
+            if bitrate_str and bitrate_str.isdigit():
+                return int(bitrate_str) // 1000  # 转换为kbps
+    except Exception:
+        return None
+    return None
+
+
+def calculate_target_bitrate(
+    duration_seconds: float, target_size_mb: int, source_bitrate_kbps: int | None = None
+) -> int:
     """根据时长和目标文件大小计算目标码率(kbps)
     预留10%空间给音频和开销
+    如果原始码率已知且目标码率高于原始码率，则返回原始码率的90%
     """
     if duration_seconds <= 0:
         return 1000  # 默认码率
@@ -181,7 +216,20 @@ def calculate_target_bitrate(duration_seconds: float, target_size_mb: int) -> in
     min_bitrate = 500  # 最小500kbps
     max_bitrate = 10000  # 最大10Mbps
 
-    return max(min_bitrate, min(max_bitrate, target_bitrate_kbps))
+    calculated_bitrate = max(min_bitrate, min(max_bitrate, target_bitrate_kbps))
+
+    # 如果原始码率已知，检查是否会造成码率升高
+    if source_bitrate_kbps is not None:
+        if calculated_bitrate > source_bitrate_kbps:
+            # 目标码率高于原始码率，使用原始码率
+            adjusted_bitrate = int(source_bitrate_kbps)
+            print(
+                f"  警告: 目标码率({calculated_bitrate}kbps) > 原始码率({source_bitrate_kbps}kbps)"
+            )
+            print(f"  调整为原始码率的90%: {adjusted_bitrate}kbps")
+            return max(min_bitrate, adjusted_bitrate)
+
+    return calculated_bitrate
 
 
 def is_valid_video(target_path: str, source_path: str | None = None) -> bool:
@@ -335,10 +383,20 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
         if options.max_size_mb:
             duration = probe_video_duration(task.src)
             if duration:
-                target_bitrate = calculate_target_bitrate(duration, options.max_size_mb)
-                print(
-                    f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {options.max_size_mb}MB)"
+                # 获取原始码率
+                source_bitrate = probe_video_bitrate(task.src)
+                target_bitrate = calculate_target_bitrate(
+                    duration, options.max_size_mb, source_bitrate
                 )
+
+                if source_bitrate:
+                    print(
+                        f"  原始码率: {source_bitrate}kbps, 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {options.max_size_mb}MB)"
+                    )
+                else:
+                    print(
+                        f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {options.max_size_mb}MB, 无法获取原始码率)"
+                    )
 
                 if options.two_pass:
                     # 两遍编码模式 - 这里只返回第一遍命令，第二遍需要单独处理
