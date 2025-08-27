@@ -7,10 +7,27 @@
     temp_dir: /tmp
 
   tasks:
+    - name: Check if Node Exporter is already installed
+      stat:
+        path: "{{ node_exporter_binary_path }}"
+      register: node_exporter_exists
+
+    - name: Check if Node Exporter service is already running
+      systemd:
+        name: node_exporter
+      register: node_exporter_service
+      ignore_errors: true
+
+    - name: Display skip message if Node Exporter is already installed
+      debug:
+        msg: "Node Exporter 已经安装并运行，跳过安装步骤。"
+      when: node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active"
+
     - name: Update package cache
       apt:
         update_cache: yes
         cache_valid_time: 3600
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Install required packages
       apt:
@@ -19,6 +36,7 @@
           - jq
           - tar
         state: present
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Get latest Node Exporter release information
       uri:
@@ -26,15 +44,19 @@
         method: GET
         return_content: yes
       register: github_release
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Extract download URL for linux-amd64
       set_fact:
         download_url: "{{ github_release.json.assets | selectattr('name', 'search', 'linux-amd64') | map(attribute='browser_download_url') | first }}"
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Fail if download URL not found
       fail:
         msg: "无法获取 Node Exporter 下载链接，请检查网络连接或 GitHub API 状态。"
-      when: download_url is not defined or download_url == ""
+      when:
+        - not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
+        - download_url is not defined or download_url == ""
 
     - name: Download Node Exporter
       get_url:
@@ -42,6 +64,7 @@
         dest: "{{ temp_dir }}/{{ download_url | basename }}"
         mode: "0644"
       register: download_result
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Extract Node Exporter archive
       unarchive:
@@ -49,6 +72,7 @@
         dest: "{{ temp_dir }}"
         remote_src: yes
         creates: "{{ temp_dir }}/node_exporter-*/node_exporter"
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Find extracted directory
       find:
@@ -56,6 +80,7 @@
         patterns: "node_exporter-*"
         file_type: directory
       register: extracted_dirs
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Copy Node Exporter binary to /usr/local/bin
       copy:
@@ -65,6 +90,7 @@
         owner: root
         group: root
         remote_src: yes
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Create Node Exporter systemd service file
       copy:
@@ -83,16 +109,19 @@
         mode: "0644"
         owner: root
         group: root
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Reload systemd daemon
       systemd:
         daemon_reload: yes
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Start and enable Node Exporter service
       systemd:
         name: node_exporter
         state: started
         enabled: yes
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
 
     - name: Clean up downloaded files
       file:
@@ -101,8 +130,11 @@
       loop:
         - "{{ download_result.dest }}"
         - "{{ extracted_dirs.files[0].path }}"
-      when: extracted_dirs.files is defined and extracted_dirs.files | length > 0
+      when:
+        - not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")
+        - extracted_dirs.files is defined and extracted_dirs.files | length > 0
 
     - name: Display installation completion message
       debug:
         msg: "Node Exporter 安装完成！"
+      when: not (node_exporter_exists.stat.exists and node_exporter_service.status.ActiveState == "active")

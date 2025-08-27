@@ -9,10 +9,27 @@
     temp_dir: /tmp
 
   tasks:
+    - name: Check if Prometheus is already installed
+      stat:
+        path: "{{ prometheus_binary_path }}"
+      register: prometheus_exists
+
+    - name: Check if Prometheus service is already running
+      systemd:
+        name: prometheus
+      register: prometheus_service
+      ignore_errors: true
+
+    - name: Display skip message if Prometheus is already installed
+      debug:
+        msg: "Prometheus 已经安装并运行，跳过安装步骤。"
+      when: prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active"
+
     - name: Update package cache
       apt:
         update_cache: yes
         cache_valid_time: 3600
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Install required packages
       apt:
@@ -21,6 +38,7 @@
           - jq
           - tar
         state: present
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Get latest Prometheus release information
       uri:
@@ -28,15 +46,19 @@
         method: GET
         return_content: yes
       register: github_release
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Extract download URL for linux-amd64
       set_fact:
         download_url: "{{ github_release.json.assets | selectattr('name', 'search', 'linux-amd64') | map(attribute='browser_download_url') | first }}"
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Fail if download URL not found
       fail:
         msg: "无法获取 Prometheus 下载链接，请检查网络连接或 GitHub API 状态。"
-      when: download_url is not defined or download_url == ""
+      when:
+        - not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
+        - download_url is not defined or download_url == ""
 
     - name: Download Prometheus
       get_url:
@@ -44,6 +66,7 @@
         dest: "{{ temp_dir }}/{{ download_url | basename }}"
         mode: "0644"
       register: download_result
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Extract Prometheus archive
       unarchive:
@@ -51,6 +74,7 @@
         dest: "{{ temp_dir }}"
         remote_src: yes
         creates: "{{ temp_dir }}/prometheus-*/prometheus"
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Find extracted directory
       find:
@@ -58,6 +82,7 @@
         patterns: "prometheus-*"
         file_type: directory
       register: extracted_dirs
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Copy Prometheus binary to /usr/local/bin
       copy:
@@ -67,6 +92,7 @@
         owner: root
         group: root
         remote_src: yes
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Create Prometheus configuration directory
       file:
@@ -75,6 +101,7 @@
         mode: "0755"
         owner: root
         group: root
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Copy Prometheus configuration file
       copy:
@@ -84,6 +111,7 @@
         owner: root
         group: root
         remote_src: yes
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Create Prometheus systemd service file
       copy:
@@ -102,16 +130,19 @@
         mode: "0644"
         owner: root
         group: root
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Reload systemd daemon
       systemd:
         daemon_reload: yes
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Start and enable Prometheus service
       systemd:
         name: prometheus
         state: started
         enabled: yes
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
 
     - name: Clean up downloaded files
       file:
@@ -120,8 +151,11 @@
       loop:
         - "{{ download_result.dest }}"
         - "{{ extracted_dirs.files[0].path }}"
-      when: extracted_dirs.files is defined and extracted_dirs.files | length > 0
+      when:
+        - not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")
+        - extracted_dirs.files is defined and extracted_dirs.files | length > 0
 
     - name: Display installation completion message
       debug:
         msg: "Prometheus 安装完成！"
+      when: not (prometheus_exists.stat.exists and prometheus_service.status.ActiveState == "active")

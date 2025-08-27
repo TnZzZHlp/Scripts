@@ -2,6 +2,21 @@
   hosts: all
   become: yes
   tasks:
+    - name: Check if Nginx is already installed
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Check if Nginx service is already running
+      ansible.builtin.systemd:
+        name: nginx
+      register: nginx_service
+      ignore_errors: true
+
+    - name: Display skip message if Nginx is already installed
+      ansible.builtin.debug:
+        msg: "Nginx 已经安装并运行，跳过安装步骤。"
+      when: "'nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active'"
+
     - name: Install prerequisites
       ansible.builtin.apt:
         update_cache: yes
@@ -11,27 +26,33 @@
           - ca-certificates
           - lsb-release
           - debian-archive-keyring
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Create keyrings directory
       ansible.builtin.file:
         path: /usr/share/keyrings
         state: directory
         mode: "0755"
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Check if Nginx signing key exists
       ansible.builtin.stat:
         path: /usr/share/keyrings/nginx-archive-keyring.gpg
       register: nginx_keyring_check
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Download and install Nginx signing key
       ansible.builtin.shell: |
         curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
-      when: not nginx_keyring_check.stat.exists
+      when:
+        - "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
+        - not nginx_keyring_check.stat.exists
 
     - name: Verify Nginx signing key exists
       ansible.builtin.stat:
         path: /usr/share/keyrings/nginx-archive-keyring.gpg
       register: nginx_keyring
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Create Nginx APT sources file
       ansible.builtin.copy:
@@ -45,23 +66,29 @@
         owner: root
         group: root
         mode: "0644"
-      when: nginx_keyring.stat.exists
+      when:
+        - "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
+        - nginx_keyring.stat.exists
 
     - name: Update package cache
       ansible.builtin.apt:
         update_cache: yes
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Install Nginx
       ansible.builtin.apt:
         name: nginx
         state: present
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Start and enable Nginx service
       ansible.builtin.systemd:
         name: nginx
         state: started
         enabled: yes
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"
 
     - name: Display installation completion message
       ansible.builtin.debug:
         msg: "Nginx 安装完成并已启动！"
+      when: "not ('nginx' in ansible_facts.packages and nginx_service.status.ActiveState == 'active')"

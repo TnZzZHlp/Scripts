@@ -8,6 +8,21 @@
     syncthing_sources_file: /etc/apt/sources.list.d/syncthing.sources
 
   tasks:
+    - name: Check if Syncthing is already installed
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Check if Syncthing service is already enabled
+      ansible.builtin.systemd:
+        name: syncthing@root
+      register: syncthing_service
+      ignore_errors: true
+
+    - name: Display skip message if Syncthing is already installed
+      ansible.builtin.debug:
+        msg: "Syncthing 已经安装，跳过安装步骤。"
+      when: "'syncthing' in ansible_facts.packages"
+
     - name: Install prerequisites
       ansible.builtin.apt:
         update_cache: yes
@@ -18,6 +33,7 @@
           - lsb-release
           - debian-archive-keyring
         state: present
+      when: "not ('syncthing' in ansible_facts.packages)"
 
     - name: Create apt keyrings directory
       ansible.builtin.file:
@@ -26,11 +42,13 @@
         mode: "0755"
         owner: root
         group: root
+      when: "not ('syncthing' in ansible_facts.packages)"
 
     - name: Check if Syncthing signing key exists
       ansible.builtin.stat:
         path: "{{ syncthing_keyring_path }}"
       register: syncthing_keyring_check
+      when: "not ('syncthing' in ansible_facts.packages)"
 
     - name: Download Syncthing GPG signing key
       ansible.builtin.get_url:
@@ -39,17 +57,22 @@
         mode: "0644"
         owner: root
         group: root
-      when: not syncthing_keyring_check.stat.exists
+      when:
+        - "not ('syncthing' in ansible_facts.packages)"
+        - not syncthing_keyring_check.stat.exists
 
     - name: Verify Syncthing signing key exists
       ansible.builtin.stat:
         path: "{{ syncthing_keyring_path }}"
       register: syncthing_keyring
+      when: "not ('syncthing' in ansible_facts.packages)"
 
     - name: Fail if GPG key download failed
       ansible.builtin.fail:
         msg: "无法下载 Syncthing GPG 签名密钥"
-      when: not syncthing_keyring.stat.exists
+      when:
+        - "not ('syncthing' in ansible_facts.packages)"
+        - not syncthing_keyring.stat.exists
 
     - name: Create Syncthing APT sources file
       ansible.builtin.copy:
@@ -63,20 +86,25 @@
         owner: root
         group: root
         mode: "0644"
-      when: syncthing_keyring.stat.exists
+      when:
+        - "not ('syncthing' in ansible_facts.packages)"
+        - syncthing_keyring.stat.exists
 
     - name: Install Syncthing
       ansible.builtin.apt:
         update_cache: yes
         name: syncthing
         state: present
+      when: "not ('syncthing' in ansible_facts.packages)"
 
     - name: Enable Syncthing service (but don't start it automatically)
       ansible.builtin.systemd:
         name: syncthing@root
         enabled: yes
+      when: "not ('syncthing' in ansible_facts.packages)"
 
     - name: Display installation completion message
       ansible.builtin.debug:
         msg: |
           Syncthing 安装完成！
+      when: "not ('syncthing' in ansible_facts.packages)"
