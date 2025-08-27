@@ -226,7 +226,7 @@ def calculate_target_bitrate(
             print(
                 f"  警告: 目标码率({calculated_bitrate}kbps) > 原始码率({source_bitrate_kbps}kbps)"
             )
-            print(f"  调整为原始码率的90%: {adjusted_bitrate}kbps")
+            print(f"  调整为原始码率: {adjusted_bitrate}kbps")
             return max(min_bitrate, adjusted_bitrate)
 
     return calculated_bitrate
