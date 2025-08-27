@@ -24,12 +24,6 @@ if ! command -v dpkg &> /dev/null; then
     exit 1
 fi
 
-# 检查网络连接
-if ! curl -s --connect-timeout 5 https://cli.github.com &> /dev/null; then
-    echo "错误：无法连接到GitHub CLI服务器，请检查网络连接"
-    exit 1
-fi
-
 echo "正在检查并安装curl..."
 # 检查并安装 curl（如果需要）
 if ! command -v curl &> /dev/null; then
@@ -42,6 +36,13 @@ if ! command -v curl &> /dev/null; then
         echo "错误：无法安装curl"
         exit 1
     fi
+fi
+
+# 检查网络连接
+echo "正在检查网络连接..."
+if ! curl -s --connect-timeout 5 https://cli.github.com &> /dev/null; then
+    echo "错误：无法连接到GitHub CLI服务器，请检查网络连接"
+    exit 1
 fi
 
 echo "正在设置GPG密钥..."
@@ -78,10 +79,7 @@ if [[ -z "$ARCH" ]]; then
 fi
 
 # 创建软件源配置文件（deb822格式）
-if ! $SUDO tee /etc/apt/sources.list.d/github-cli.sources > /dev/null <<EOF; then
-    echo "错误：无法创建软件源配置文件"
-    exit 1
-fi
+$SUDO tee /etc/apt/sources.list.d/github-cli.sources > /dev/null <<EOF
 Types: deb
 URIs: https://cli.github.com/packages
 Suites: stable
@@ -89,6 +87,11 @@ Components: main
 Architectures: $ARCH
 Signed-By: /etc/apt/keyrings/githubcli-archive-keyring.gpg
 EOF
+
+if [[ $? -ne 0 ]]; then
+    echo "错误：无法创建软件源配置文件"
+    exit 1
+fi
 
 echo "正在更新软件包列表..."
 # 更新软件包列表
