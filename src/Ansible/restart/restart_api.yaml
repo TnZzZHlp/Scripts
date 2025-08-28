@@ -1,0 +1,7 @@
+- name: Restart API Service
+  hosts: all
+  tasks:
+    - name: Restart API Service
+      ansible.builtin.systemd:
+        name: api
+        state: restarted
