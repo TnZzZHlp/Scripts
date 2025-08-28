@@ -7,9 +7,9 @@
     hysteria_backup_path: "/usr/local/bin/hysteria.backup.{{ ansible_date_time.epoch }}"
 
   tasks:
-    - name: Check if Hysteria service exists
+    - name: Check if Hysteria2 service exists
       ansible.builtin.systemd:
-        name: hysteria
+        name: hysteria2
       register: hysteria_service_status
       failed_when: false
 
@@ -90,9 +90,9 @@
       changed_when: false
       when: update_needed
 
-    - name: Stop Hysteria service before upgrade
+    - name: Stop Hysteria2 service before upgrade
       ansible.builtin.systemd:
-        name: hysteria
+        name: hysteria2
         state: stopped
       when:
         - hysteria_service_status.status is defined
@@ -120,7 +120,7 @@
         group: root
         backup: true
       when: update_needed
-      notify: restart hysteria
+      notify: restart hysteria2
 
     - name: Verify new Hysteria installation
       ansible.builtin.command:
@@ -129,9 +129,9 @@
       changed_when: false
       when: update_needed
 
-    - name: Start and enable Hysteria service
+    - name: Start and enable Hysteria2 service
       ansible.builtin.systemd:
-        name: hysteria
+        name: hysteria2
         state: started
         enabled: true
         daemon_reload: true
@@ -139,16 +139,16 @@
         - hysteria_service_status.status is defined
         - update_needed
 
-    - name: Wait for Hysteria service to be ready
+    - name: Wait for Hysteria2 service to be ready
       ansible.builtin.wait_for:
         timeout: 10
       when:
         - hysteria_service_status.status is defined
         - update_needed
 
-    - name: Verify Hysteria service status
+    - name: Verify Hysteria2 service status
       ansible.builtin.systemd:
-        name: hysteria
+        name: hysteria2
       register: final_service_status
       when:
         - hysteria_service_status.status is defined
@@ -182,9 +182,9 @@
           {% endif %}
 
   handlers:
-    - name: restart hysteria
+    - name: restart hysteria2
       ansible.builtin.systemd:
-        name: hysteria
+        name: hysteria2
         state: restarted
         enabled: true
-      listen: restart hysteria
+      listen: restart hysteria2
