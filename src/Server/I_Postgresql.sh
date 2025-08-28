@@ -2,7 +2,7 @@
 
 # PostgreSQL 官方仓库安装脚本
 # 支持 Debian/Ubuntu 系统
-# 自动检测发行版并配置 PostgreSQL 官方 APT 仓库
+# 自动检测发行版并配置 PostgreSQL 官方 APT 仓库 (deb822 格式)
 
 set -euo pipefail  # 严格模式：遇到错误立即退出
 
@@ -197,15 +197,15 @@ import_repository_key() {
     log_success "PostgreSQL 仓库密钥导入成功"
 }
 
-# 创建 APT 源文件
+# 创建 APT 源文件 (deb822 格式)
 create_apt_source() {
-    log_info "创建 APT 源文件..."
+    log_info "创建 APT 源文件 (deb822 格式)..."
 
     # 重新加载操作系统信息以确保变量可用
     . /etc/os-release
 
     local sources_dir="/etc/apt/sources.list.d"
-    local source_file="$sources_dir/pgdg.list"
+    local source_file="$sources_dir/pgdg.sources"
     local key_file="/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc"
 
     # 检查源目录是否存在
@@ -220,14 +220,18 @@ create_apt_source() {
         exit 1
     fi
 
-    # 构造源文件内容
-    local source_line="deb [signed-by=$key_file] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main"
+    # 构造 deb822 格式的源文件内容
+    local source_content="Types: deb
+URIs: https://apt.postgresql.org/pub/repos/apt
+Suites: ${VERSION_CODENAME}-pgdg
+Components: main
+Signed-By: $key_file"
 
     log_info "创建源文件: $source_file"
-    log_info "源内容: $source_line"
+    log_info "使用 deb822 格式"
 
     # 创建源文件
-    if ! echo "$source_line" | $SUDO_CMD tee "$source_file" >/dev/null; then
+    if ! echo "$source_content" | $SUDO_CMD tee "$source_file" >/dev/null; then
         log_error "创建 APT 源文件失败"
         exit 1
     fi
@@ -244,7 +248,17 @@ create_apt_source() {
         exit 1
     fi
 
-    log_success "APT 源文件创建成功"
+    # 验证 deb822 格式的必要字段
+    if ! grep -q "Types:" "$source_file" || ! grep -q "URIs:" "$source_file" || ! grep -q "Suites:" "$source_file"; then
+        log_error "deb822 格式源文件字段不完整"
+        exit 1
+    fi
+
+    log_success "APT 源文件 (deb822 格式) 创建成功"
+    log_info "源文件内容:"
+    echo "---"
+    cat "$source_file" 2>/dev/null || log_warning "无法显示源文件内容"
+    echo "---"
 }
 
 # 更新软件包列表
@@ -257,7 +271,7 @@ update_package_list() {
     fi
 
     # 验证 PostgreSQL 包是否可用
-    if apt-cache search postgresql-16 | grep -q "postgresql-16"; then
+    if apt-cache search postgresql | grep -q "postgresql"; then
         log_success "PostgreSQL 仓库配置成功，可以安装 PostgreSQL"
     else
         log_warning "PostgreSQL 包可能不可用，请检查仓库配置"
@@ -268,12 +282,12 @@ update_package_list() {
 show_installation_info() {
     log_success "PostgreSQL 官方仓库配置完成！"
     echo
+    log_info "已使用 deb822 格式创建源文件: /etc/apt/sources.list.d/pgdg.sources"
+    log_info "deb822 格式的优势: 更结构化、可读性更好、支持更多功能"
+    echo
     log_info "现在您可以安装 PostgreSQL："
     echo "  # 安装最新版本的 PostgreSQL"
     echo "  sudo apt install postgresql postgresql-contrib"
-    echo
-    echo "  # 或安装特定版本（如 PostgreSQL 16）"
-    echo "  sudo apt install postgresql-16 postgresql-contrib-16"
     echo
     log_info "查看可用版本："
     echo "  apt-cache search postgresql | grep postgresql-"
