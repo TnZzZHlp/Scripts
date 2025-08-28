@@ -1,0 +1,190 @@
+- name: Upgrade Hysteria
+  hosts: gfw
+  become: true
+  vars:
+    hysteria_temp_dir: "/tmp/hysteria-upgrade-{{ ansible_date_time.epoch }}"
+    hysteria_binary_path: "/usr/local/bin/hysteria"
+    hysteria_backup_path: "/usr/local/bin/hysteria.backup.{{ ansible_date_time.epoch }}"
+
+  tasks:
+    - name: Check if Hysteria service exists
+      ansible.builtin.systemd:
+        name: hysteria
+      register: hysteria_service_status
+      failed_when: false
+
+    - name: Get current Hysteria version
+      ansible.builtin.command:
+        cmd: "{{ hysteria_binary_path }} version"
+      register: current_hysteria_version
+      failed_when: false
+      changed_when: false
+      when: hysteria_service_status.status is defined
+
+    - name: Get latest Hysteria release information from GitHub API
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/apernet/hysteria/releases/latest
+        method: GET
+        return_content: true
+        timeout: 30
+      register: github_release
+
+    - name: Extract version numbers for comparison
+      ansible.builtin.set_fact:
+        current_version: "{{ current_hysteria_version.stdout | regex_search('Version: ([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first | default('0.0.0') }}"
+        latest_version: "{{ github_release.json.tag_name | regex_replace('^app/v', '') }}"
+      when: current_hysteria_version.stdout is defined
+
+    - name: Set current version to 0.0.0 if Hysteria not installed
+      ansible.builtin.set_fact:
+        current_version: "0.0.0"
+        latest_version: "{{ github_release.json.tag_name | regex_replace('^app/v', '') }}"
+      when: current_hysteria_version.stdout is not defined
+
+    - name: Display version information
+      ansible.builtin.debug:
+        msg: |
+          Current version: {{ current_hysteria_version.stdout | default('Not installed') }}
+          Latest available version: {{ latest_version }}
+          Current version number: {{ current_version }}
+          Latest version number: {{ latest_version }}
+
+    - name: Check if update is needed
+      ansible.builtin.set_fact:
+        update_needed: "{{ latest_version is version(current_version, '>') }}"
+
+    - name: Display update status
+      ansible.builtin.debug:
+        msg: |
+          {% if update_needed %}
+          Update needed: Current version {{ current_version }} < Latest version {{ latest_version }}
+          {% else %}
+          No update needed: Current version {{ current_version }} >= Latest version {{ latest_version }}
+          {% endif %}
+
+    - name: Skip upgrade if no update needed
+      ansible.builtin.meta: end_play
+      when: not update_needed
+
+    - name: Create temporary directory with unique name
+      ansible.builtin.file:
+        path: "{{ hysteria_temp_dir }}"
+        state: directory
+        mode: "0700"
+      when: update_needed
+
+    - name: Download latest Hysteria release
+      ansible.builtin.get_url:
+        url: "https://github.com/apernet/hysteria/releases/download/{{ github_release.json.tag_name }}/hysteria-linux-amd64"
+        dest: "{{ hysteria_temp_dir }}/hysteria"
+        mode: "0755"
+        timeout: 30
+        validate_certs: true
+      register: download_result
+      when: update_needed
+
+    - name: Verify downloaded Hysteria binary
+      ansible.builtin.command:
+        cmd: "{{ hysteria_temp_dir }}/hysteria version"
+      register: new_hysteria_version
+      changed_when: false
+      when: update_needed
+
+    - name: Stop Hysteria service before upgrade
+      ansible.builtin.systemd:
+        name: hysteria
+        state: stopped
+      when:
+        - hysteria_service_status.status is defined
+        - update_needed
+      ignore_errors: true
+
+    - name: Backup existing Hysteria binary
+      ansible.builtin.copy:
+        src: "{{ hysteria_binary_path }}"
+        dest: "{{ hysteria_backup_path }}"
+        remote_src: true
+        mode: "0755"
+      when:
+        - hysteria_service_status.status is defined
+        - update_needed
+      ignore_errors: true
+
+    - name: Install new Hysteria binary
+      ansible.builtin.copy:
+        src: "{{ hysteria_temp_dir }}/hysteria"
+        dest: "{{ hysteria_binary_path }}"
+        remote_src: true
+        mode: "0755"
+        owner: root
+        group: root
+        backup: true
+      when: update_needed
+      notify: restart hysteria
+
+    - name: Verify new Hysteria installation
+      ansible.builtin.command:
+        cmd: "{{ hysteria_binary_path }} version"
+      register: installed_version
+      changed_when: false
+      when: update_needed
+
+    - name: Start and enable Hysteria service
+      ansible.builtin.systemd:
+        name: hysteria
+        state: started
+        enabled: true
+        daemon_reload: true
+      when:
+        - hysteria_service_status.status is defined
+        - update_needed
+
+    - name: Wait for Hysteria service to be ready
+      ansible.builtin.wait_for:
+        timeout: 10
+      when:
+        - hysteria_service_status.status is defined
+        - update_needed
+
+    - name: Verify Hysteria service status
+      ansible.builtin.systemd:
+        name: hysteria
+      register: final_service_status
+      when:
+        - hysteria_service_status.status is defined
+        - update_needed
+
+    - name: Clean up temporary files
+      ansible.builtin.file:
+        path: "{{ hysteria_temp_dir }}"
+        state: absent
+
+    - name: Remove old backup files (keep only latest 3)
+      ansible.builtin.shell: |
+        cd /usr/local/bin
+        ls -t hysteria.backup.* 2>/dev/null | tail -n +4 | xargs rm -f
+      ignore_errors: true
+      changed_when: false
+      when: update_needed
+
+    - name: Display upgrade result
+      ansible.builtin.debug:
+        msg: |
+          {% if update_needed %}
+          Hysteria upgrade completed successfully!
+          Previous version: {{ current_version }}
+          Installed version: {{ latest_version }}
+          Service status: {{ final_service_status.status.ActiveState | default('Unknown') }}
+          {% else %}
+          No upgrade performed - Hysteria is already up to date!
+          Current version: {{ current_version }}
+          Latest available: {{ latest_version }}
+          {% endif %}
+
+  handlers:
+    - name: restart hysteria
+      ansible.builtin.systemd:
+        name: hysteria
+        state: restarted
+        enabled: true
+      listen: restart hysteria
