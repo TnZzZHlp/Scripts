@@ -281,17 +281,8 @@ update_package_list() {
 # 显示安装信息
 show_installation_info() {
     log_success "PostgreSQL 官方仓库配置完成！"
-    echo
-    log_info "已使用 deb822 格式创建源文件: /etc/apt/sources.list.d/pgdg.sources"
-    log_info "deb822 格式的优势: 更结构化、可读性更好、支持更多功能"
-    echo
-    log_info "现在您可以安装 PostgreSQL："
     echo "  # 安装最新版本的 PostgreSQL"
-    echo "  sudo apt install postgresql postgresql-contrib"
-    echo
-    log_info "查看可用版本："
-    echo "  apt-cache search postgresql | grep postgresql-"
-    echo
+    echo "  sudo apt install postgresql"
 }
 
 # 主函数
