@@ -23,7 +23,7 @@
 
     - name: Get latest Hysteria release information from GitHub API
       ansible.builtin.uri:
-        url: https://api.github.com/repos/apernet/hysteria2/releases/latest
+        url: https://api.github.com/repos/apernet/hysteria/releases/latest
         method: GET
         return_content: true
         timeout: 30
@@ -75,7 +75,7 @@
 
     - name: Download latest Hysteria release
       ansible.builtin.get_url:
-        url: "https://github.com/apernet/hysteria2/releases/download/{{ github_release.json.tag_name }}/hysteria2-linux-amd64"
+        url: "https://github.com/apernet/hysteria/releases/download/{{ github_release.json.tag_name }}/hysteria2-linux-amd64"
         dest: "{{ hysteria2_temp_dir }}/hysteria2"
         mode: "0755"
         timeout: 30
