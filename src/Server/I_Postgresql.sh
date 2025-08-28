@@ -33,7 +33,7 @@ log_error() {
 # 检查是否为 root 用户或有 sudo 权限
 check_privileges() {
     log_info "检查用户权限..."
-    
+
     if [[ $EUID -eq 0 ]]; then
         log_info "当前用户为 root，继续执行"
         SUDO_CMD=""
@@ -54,17 +54,17 @@ check_privileges() {
 # 检查操作系统
 check_os() {
     log_info "检查操作系统..."
-    
+
     if [[ ! -f /etc/os-release ]]; then
         log_error "/etc/os-release 文件不存在，无法确定操作系统"
         exit 1
     fi
-    
+
     # 加载操作系统信息
     . /etc/os-release
-    
+
     log_info "检测到操作系统: ${NAME} ${VERSION}"
-    
+
     # 检查是否为支持的发行版
     case "${ID}" in
         debian|ubuntu)
@@ -75,15 +75,15 @@ check_os() {
             exit 1
         ;;
     esac
-    
+
     # 检查版本代号是否存在
     if [[ -z "${VERSION_CODENAME:-}" ]]; then
         log_error "无法获取发行版代号 (VERSION_CODENAME)"
         exit 1
     fi
-    
+
     log_info "发行版代号: ${VERSION_CODENAME}"
-    
+
     # 验证代号是否为支持的版本
     case "${VERSION_CODENAME}" in
         # Debian
@@ -110,152 +110,152 @@ check_os() {
 # 检查网络连接
 check_network() {
     log_info "检查网络连接..."
-    
+
     if ! command -v curl >/dev/null 2>&1; then
         log_warning "curl 未安装，将在后续步骤中安装"
         return
     fi
-    
+
     if ! curl -s --max-time 10 --head https://www.postgresql.org >/dev/null; then
         log_error "无法连接到 PostgreSQL 官方网站，请检查网络连接"
         exit 1
     fi
-    
+
     log_success "网络连接正常"
 }
 
 # 安装必要的依赖包
 install_dependencies() {
     log_info "安装必要的依赖包..."
-    
+
     # 更新包列表
     log_info "更新软件包列表..."
     if ! $SUDO_CMD apt update; then
         log_error "更新软件包列表失败"
         exit 1
     fi
-    
+
     # 安装依赖
     local packages="curl ca-certificates"
     log_info "安装依赖包: $packages"
-    
+
     if ! $SUDO_CMD apt install -y $packages; then
         log_error "安装依赖包失败"
         exit 1
     fi
-    
+
     log_success "依赖包安装完成"
 }
 
 # 创建目录并导入密钥
 import_repository_key() {
     log_info "导入 PostgreSQL 仓库密钥..."
-    
+
     local pgdg_dir="/usr/share/postgresql-common/pgdg"
     local key_file="$pgdg_dir/apt.postgresql.org.asc"
     local key_url="https://www.postgresql.org/media/keys/ACCC4CF8.asc"
-    
+
     # 创建目录
     log_info "创建目录: $pgdg_dir"
     if ! $SUDO_CMD install -d "$pgdg_dir"; then
         log_error "创建目录失败: $pgdg_dir"
         exit 1
     fi
-    
+
     # 检查目录是否存在且可写
     if [[ ! -d "$pgdg_dir" ]]; then
         log_error "目录创建失败或不存在: $pgdg_dir"
         exit 1
     fi
-    
+
     # 下载密钥
     log_info "从 $key_url 下载密钥..."
     if ! $SUDO_CMD curl -o "$key_file" --fail --silent --show-error --location "$key_url"; then
         log_error "下载 PostgreSQL 仓库密钥失败"
         exit 1
     fi
-    
+
     # 验证密钥文件
     if [[ ! -f "$key_file" ]]; then
         log_error "密钥文件下载失败: $key_file"
         exit 1
     fi
-    
+
     # 检查文件大小
     local file_size=$(stat -c%s "$key_file" 2>/dev/null || echo "0")
     if [[ "$file_size" -lt 100 ]]; then
         log_error "密钥文件似乎不完整，大小: $file_size 字节"
         exit 1
     fi
-    
+
     # 验证密钥格式
     if ! grep -q "BEGIN PGP PUBLIC KEY BLOCK" "$key_file"; then
         log_error "密钥文件格式不正确"
         exit 1
     fi
-    
+
     log_success "PostgreSQL 仓库密钥导入成功"
 }
 
 # 创建 APT 源文件
 create_apt_source() {
     log_info "创建 APT 源文件..."
-    
+
     # 重新加载操作系统信息以确保变量可用
     . /etc/os-release
-    
+
     local sources_dir="/etc/apt/sources.list.d"
     local source_file="$sources_dir/pgdg.list"
     local key_file="/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc"
-    
+
     # 检查源目录是否存在
     if [[ ! -d "$sources_dir" ]]; then
         log_error "APT 源目录不存在: $sources_dir"
         exit 1
     fi
-    
+
     # 检查密钥文件是否存在
     if [[ ! -f "$key_file" ]]; then
         log_error "密钥文件不存在: $key_file"
         exit 1
     fi
-    
+
     # 构造源文件内容
     local source_line="deb [signed-by=$key_file] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main"
-    
+
     log_info "创建源文件: $source_file"
     log_info "源内容: $source_line"
-    
+
     # 创建源文件
     if ! echo "$source_line" | $SUDO_CMD tee "$source_file" >/dev/null; then
         log_error "创建 APT 源文件失败"
         exit 1
     fi
-    
+
     # 验证文件创建
     if [[ ! -f "$source_file" ]]; then
         log_error "源文件创建失败: $source_file"
         exit 1
     fi
-    
+
     # 验证文件内容
     if ! grep -q "postgresql.org" "$source_file"; then
         log_error "源文件内容不正确"
         exit 1
     fi
-    
+
     log_success "APT 源文件创建成功"
 }
 
 # 更新软件包列表
 update_package_list() {
     log_info "更新软件包列表以包含 PostgreSQL 仓库..."
-    
+
     if ! $SUDO_CMD apt update; then
         log_error "更新软件包列表失败"
         exit 1
     fi
-    
+
     # 验证 PostgreSQL 包是否可用
     if apt-cache search postgresql-16 | grep -q "postgresql-16"; then
         log_success "PostgreSQL 仓库配置成功，可以安装 PostgreSQL"
@@ -284,7 +284,7 @@ show_installation_info() {
 main() {
     log_info "开始配置 PostgreSQL 官方仓库..."
     echo
-    
+
     # 执行所有检查和安装步骤
     check_privileges
     check_os
@@ -294,7 +294,7 @@ main() {
     create_apt_source
     update_package_list
     show_installation_info
-    
+
     log_success "脚本执行完成！"
 }
 
