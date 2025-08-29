@@ -33,9 +33,8 @@
 
 示例:
     python detect_duplicate_videos.py "D:/Videos" --method duration --duration-tolerance 5
-    python detect_duplicate_videos.py "D:/Videos" --method frames --frame-similarity 0.9 --extract-seconds 10
-    python detect_duplicate_videos.py "D:/Videos" --method frames --frame-position start --extract-seconds 8
-    python detect_duplicate_videos.py "D:/Videos" --method frames --frame-position end --extract-seconds 5
+    python detect_duplicate_videos.py "D:/Videos" --method frames --frame-similarity 0.9 --extract-seconds 5
+    python detect_duplicate_videos.py "D:/Videos" --method frames --frame-position middle --extract-seconds 5
     python detect_duplicate_videos.py "D:/Videos" --method all --delete --dry-run
     python detect_duplicate_videos.py "D:/Videos" --output "duplicate_report.txt"
 """
@@ -293,78 +292,60 @@ class DuplicateVideoDetector:
         return -1.0
 
     def extract_video_frames(
-        self, file_path: str, extract_seconds: float = 5.0, frame_position: str = "both"
+        self,
+        file_path: str,
+        extract_seconds: float = 5.0,
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        """提取视频指定位置的帧
+        """提取视频中间位置后5秒内的帧
 
         Args:
             file_path: 视频文件路径
-            extract_seconds: 提取多少秒的帧
-            frame_position: 提取位置 ("start", "end", "both")
+            extract_seconds: 提取多少秒的帧（固定为5秒）
+            frame_position: 提取位置（现在固定为"middle"）
 
         Returns:
-            Tuple[start_frames, end_frames]: 开头帧和结尾帧的列表
+            Tuple[middle_frames, empty_list]: 中间位置帧列表和空列表（保持接口兼容）
         """
-        start_frames = []
-        end_frames = []
+        middle_frames = []
+        empty_frames = []
         try:
             cap = cv2.VideoCapture(file_path)
             if not cap.isOpened():
                 if self.verbose:
                     print(f"无法打开视频文件: {file_path}")
-                return start_frames, end_frames
+                return middle_frames, empty_frames
 
             # 获取视频信息
             fps = cap.get(cv2.CAP_PROP_FPS)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             duration = total_frames / fps if fps > 0 else 0
 
-            # 计算需要提取的帧数
-            target_frames = (
-                int(fps * extract_seconds) if fps > 0 else 30
-            )  # 默认30帧作为备用
+            if duration < 10:  # 视频太短（少于10秒），无法取中间位置后5秒
+                if self.verbose:
+                    print(f"视频时长过短 ({duration:.1f}秒)，跳过: {file_path}")
+                return middle_frames, empty_frames
 
-            if duration < extract_seconds and frame_position == "both":
-                # 如果视频太短且要求前后都比较，只提取前半部分和后半部分
-                mid_frame = total_frames // 2
-                target_start_frames = mid_frame
-                target_end_frames = total_frames - mid_frame
-            else:
-                target_start_frames = target_frames
-                target_end_frames = target_frames
+            # 计算中间位置（视频总时长的一半）
+            middle_time = duration / 2
+            middle_frame = int(middle_time * fps)
 
-            # 根据参数决定提取哪部分的帧
-            if frame_position in ["start", "both"]:
-                # 提取开头的帧
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                frame_count = 0
-                while frame_count < target_start_frames:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
+            # 从中间位置开始提取后5秒的帧
+            target_frames = int(fps * extract_seconds) if fps > 0 else 150  # 5秒约150帧
 
-                    # 将帧转换为灰度图像并调整大小以提高比较效率
-                    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    resized_frame = cv2.resize(gray_frame, (64, 64))
-                    start_frames.append(resized_frame)
-                    frame_count += 1
+            # 设置起始位置为中间帧
+            cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame)
+            frame_count = 0
 
-            if frame_position in ["end", "both"]:
-                # 提取结尾的帧
-                if total_frames > target_end_frames:
-                    start_pos = max(0, total_frames - target_end_frames)
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, start_pos)
-                    frame_count = 0
-                    while frame_count < target_end_frames:
-                        ret, frame = cap.read()
-                        if not ret:
-                            break
+            while frame_count < target_frames:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-                        # 将帧转换为灰度图像并调整大小以提高比较效率
-                        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                        resized_frame = cv2.resize(gray_frame, (64, 64))
-                        end_frames.append(resized_frame)
-                        frame_count += 1
+                # 将帧转换为灰度图像并调整大小以提高比较效率
+                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                resized_frame = cv2.resize(gray_frame, (64, 64))
+                middle_frames.append(resized_frame)
+                frame_count += 1
 
             cap.release()
 
@@ -372,19 +353,20 @@ class DuplicateVideoDetector:
             if self.verbose:
                 print(f"提取视频帧失败 {file_path}: {e}")
 
-        return start_frames, end_frames
+        return middle_frames, empty_frames
 
     def calculate_frame_hash(
-        self, start_frames: List[np.ndarray], end_frames: List[np.ndarray]
+        self, middle_frames: List[np.ndarray], empty_frames: List[np.ndarray]
     ) -> str:
-        """计算开头和结尾帧序列的哈希值"""
-        if not start_frames and not end_frames:
+        """计算中间位置帧序列的哈希值"""
+        if not middle_frames:
             return ""
 
         try:
-            # 将开头和结尾帧连接成一个大的数组
-            all_frames = start_frames + end_frames
-            combined_frames = np.concatenate([frame.flatten() for frame in all_frames])
+            # 使用中间位置的帧计算哈希值
+            combined_frames = np.concatenate(
+                [frame.flatten() for frame in middle_frames]
+            )
             # 计算哈希值
             hasher = hashlib.md5()
             hasher.update(combined_frames.tobytes())
@@ -394,61 +376,29 @@ class DuplicateVideoDetector:
 
     def calculate_frame_similarity(
         self,
-        start_frames1: List[np.ndarray],
-        end_frames1: List[np.ndarray],
-        start_frames2: List[np.ndarray],
-        end_frames2: List[np.ndarray],
+        middle_frames1: List[np.ndarray],
+        empty_frames1: List[np.ndarray],
+        middle_frames2: List[np.ndarray],
+        empty_frames2: List[np.ndarray],
     ) -> float:
-        """计算两个视频开头和结尾帧序列的相似度"""
-        if (not start_frames1 and not end_frames1) or (
-            not start_frames2 and not end_frames2
-        ):
+        """计算两个视频中间位置帧序列的相似度"""
+        if not middle_frames1 or not middle_frames2:
             return 0.0
 
-        start_similarity = 0.0
-        end_similarity = 0.0
+        # 计算中间位置帧的相似度
+        min_frame_len = min(len(middle_frames1), len(middle_frames2))
+        similarities = []
 
-        # 计算开头帧的相似度
-        if start_frames1 and start_frames2:
-            min_start_len = min(len(start_frames1), len(start_frames2))
-            start_similarities = []
-            for i in range(min_start_len):
-                try:
-                    correlation = cv2.matchTemplate(
-                        start_frames1[i], start_frames2[i], cv2.TM_CCOEFF_NORMED
-                    )[0][0]
-                    start_similarities.append(max(0, correlation))
-                except Exception:
-                    start_similarities.append(0.0)
-            start_similarity = (
-                float(np.mean(start_similarities)) if start_similarities else 0.0
-            )
+        for i in range(min_frame_len):
+            try:
+                correlation = cv2.matchTemplate(
+                    middle_frames1[i], middle_frames2[i], cv2.TM_CCOEFF_NORMED
+                )[0][0]
+                similarities.append(max(0, correlation))
+            except Exception:
+                similarities.append(0.0)
 
-        # 计算结尾帧的相似度
-        if end_frames1 and end_frames2:
-            min_end_len = min(len(end_frames1), len(end_frames2))
-            end_similarities = []
-            for i in range(min_end_len):
-                try:
-                    correlation = cv2.matchTemplate(
-                        end_frames1[i], end_frames2[i], cv2.TM_CCOEFF_NORMED
-                    )[0][0]
-                    end_similarities.append(max(0, correlation))
-                except Exception:
-                    end_similarities.append(0.0)
-            end_similarity = (
-                float(np.mean(end_similarities)) if end_similarities else 0.0
-            )
-
-        # 返回开头和结尾相似度的平均值
-        if start_frames1 and start_frames2 and end_frames1 and end_frames2:
-            return (start_similarity + end_similarity) / 2
-        elif start_frames1 and start_frames2:
-            return start_similarity
-        elif end_frames1 and end_frames2:
-            return end_similarity
-        else:
-            return 0.0
+        return float(np.mean(similarities)) if similarities else 0.0
 
     def detect_by_size(self) -> Dict[int, List[VideoFile]]:
         """基于文件大小检测重复文件"""
@@ -609,16 +559,12 @@ class DuplicateVideoDetector:
         duration_tolerance: float = 3.0,
         frame_similarity_threshold: float = 0.8,
         extract_seconds: float = 5.0,
-        frame_position: str = "both",
     ) -> Dict[str, List[VideoFile]]:
-        """基于视频时长和指定位置画面检测重复文件"""
-        position_name = {"start": "开头", "end": "结尾", "both": "前后"}.get(
-            frame_position, "前后"
-        )
+        """基于视频时长和中间位置画面检测重复文件"""
 
         if self.verbose:
             print(
-                f"正在进行时长+画面检测 (时长容差: ±{duration_tolerance}秒, 画面相似度阈值: {frame_similarity_threshold}, 提取时长: {position_name}{extract_seconds}秒)..."
+                f"正在进行时长+画面检测 (时长容差: ±{duration_tolerance}秒, 画面相似度阈值: {frame_similarity_threshold}, 提取中间位置后{extract_seconds}秒)..."
             )
 
         # 首先基于时长进行初步筛选
@@ -645,24 +591,24 @@ class DuplicateVideoDetector:
             if self.verbose:
                 print(f"\n正在处理组 {group_key} ({len(files)} 个文件)")
 
-            # 提取每个文件指定位置的帧
+            # 提取每个文件中间位置的帧
             file_frames = {}
 
             # 创建帧提取进度显示器
             frame_progress = ProgressDisplay(
-                len(files), f"  提取帧 ({group_key})", self.verbose
+                len(files), f"  提取中间位置帧 ({group_key})", self.verbose
             )
 
             for video_file in files:
                 frame_progress.update(1, video_file.name)
-                start_frames, end_frames = self.extract_video_frames(
-                    video_file.path, extract_seconds, frame_position
+                middle_frames, empty_frames = self.extract_video_frames(
+                    video_file.path, extract_seconds
                 )
-                if start_frames or end_frames:
+                if middle_frames:
                     file_frames[video_file.path] = (
                         video_file,
-                        start_frames,
-                        end_frames,
+                        middle_frames,
+                        empty_frames,
                     )
 
             frame_progress.finish("帧提取完成")
@@ -678,7 +624,11 @@ class DuplicateVideoDetector:
                 )
                 comparison_count = 0
 
-                for path1, (file1, start_frames1, end_frames1) in file_frames.items():
+                for path1, (
+                    file1,
+                    middle_frames1,
+                    empty_frames1,
+                ) in file_frames.items():
                     if path1 in processed_files:
                         continue
 
@@ -687,8 +637,8 @@ class DuplicateVideoDetector:
 
                     for path2, (
                         file2,
-                        start_frames2,
-                        end_frames2,
+                        middle_frames2,
+                        empty_frames2,
                     ) in file_frames.items():
                         if path2 in processed_files:
                             continue
@@ -697,11 +647,11 @@ class DuplicateVideoDetector:
                         similarity_progress.update(1, f"{file1.name} vs {file2.name}")
 
                         similarity = self.calculate_frame_similarity(
-                            start_frames1, end_frames1, start_frames2, end_frames2
+                            middle_frames1, empty_frames1, middle_frames2, empty_frames2
                         )
                         if self.verbose:
                             print(
-                                f"\n    相似度 {file1.name} vs {file2.name}: {similarity:.3f}"
+                                f"\n    中间位置相似度 {file1.name} vs {file2.name}: {similarity:.3f}"
                             )
 
                         if similarity >= frame_similarity_threshold:
@@ -883,12 +833,6 @@ def main():
         help="提取视频前后多少秒的帧进行比较 (默认: 5.0)",
     )
     parser.add_argument(
-        "--frame-position",
-        choices=["start", "end", "both"],
-        default="start",
-        help="选择提取哪部分的帧进行比较: start(开头), end(结尾), both(前后都比较) (默认: start)",
-    )
-    parser.add_argument(
         "--delete", action="store_true", help="删除重复文件 (保留文件大小最大的文件)"
     )
     parser.add_argument(
@@ -988,7 +932,6 @@ def main():
             args.duration_tolerance,
             args.frame_similarity,
             args.extract_seconds,
-            args.frame_position,
         )
         all_duplicates["时长+画面"] = duplicates
         detector.print_duplicates_report(duplicates, "时长+画面")
