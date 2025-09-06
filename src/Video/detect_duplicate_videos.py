@@ -320,20 +320,21 @@ class DuplicateVideoDetector:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             duration = total_frames / fps if fps > 0 else 0
 
-            if duration < 10:  # 视频太短（少于10秒），无法取中间位置后5秒
-                if self.verbose:
-                    print(f"视频时长过短 ({duration:.1f}秒)，跳过: {file_path}")
-                return middle_frames, empty_frames
-
-            # 计算中间位置（视频总时长的一半）
-            middle_time = duration / 2
-            middle_frame = int(middle_time * fps)
+            # 如果视频时长小于要提取的秒数，则提取整个视频
+            if duration < extract_seconds:
+                start_frame = 0
+                target_frames = total_frames
+            else:
+                # 计算中间位置（视频总时长的一半）
+                middle_time = duration / 2
+                middle_frame = int(middle_time * fps)
+                start_frame = middle_frame
 
             # 从中间位置开始提取后5秒的帧
             target_frames = int(fps * extract_seconds) if fps > 0 else 150  # 5秒约150帧
 
-            # 设置起始位置为中间帧
-            cap.set(cv2.CAP_PROP_POS_FRAMES, middle_frame)
+            # 设置起始位置
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frame_count = 0
 
             while frame_count < target_frames:
