@@ -2,7 +2,7 @@ import os
 import time
 import requests
 
-QB_ADDRESS = "http://192.168.2.10:8079"
+QB_ADDRESS = "http://192.168.255.77:8080"
 
 # 定义全局变量用于存储日志文件描述符
 LOG_FILE = None
