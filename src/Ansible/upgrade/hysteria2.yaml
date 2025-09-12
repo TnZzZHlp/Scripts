@@ -75,7 +75,7 @@
 
     - name: Download latest Hysteria release
       ansible.builtin.get_url:
-        url: "https://github.com/apernet/hysteria/releases/download/{{ github_release.json.tag_name }}/hysteria2-linux-amd64"
+        url: "https://github.com/apernet/hysteria/releases/download/{{ github_release.json.tag_name }}/hysteria-linux-amd64"
         dest: "{{ hysteria2_temp_dir }}/hysteria2"
         mode: "0755"
         timeout: 30
