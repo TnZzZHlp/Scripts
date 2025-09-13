@@ -31,6 +31,18 @@
       changed_when: false
       when: qbittorrent_binary_stat.stat.exists | default(false)
 
+    - name: Compute current_findall (safe pattern)
+      ansible.builtin.set_fact:
+        current_findall: "{{ (current_qbittorrent_version.stdout | default('')) | regex_findall('qBittorrent v([0-9]+[.][0-9]+[.][0-9]+)') }}"
+      when: qbittorrent_binary_stat.stat.exists | default(false)
+
+    - name: Debug current raw and findall
+      ansible.builtin.debug:
+        msg:
+          - "current_raw: {{ current_qbittorrent_version.stdout | default('') }}"
+          - "current_findall: {{ current_findall }}"
+      when: qbittorrent_binary_stat.stat.exists | default(false)
+
     - name: Get latest qBittorrent release information from GitHub API
       ansible.builtin.uri:
         url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
@@ -39,21 +51,31 @@
         timeout: 30
       register: github_release
 
+    - name: Compute tag_findall (safe pattern)
+      ansible.builtin.set_fact:
+        tag_findall: "{{ (github_release.json.tag_name | default('')) | regex_findall('([0-9]+[.][0-9]+[.][0-9]+)') }}"
+
+    - name: Debug raw GitHub tag and findall
+      ansible.builtin.debug:
+        msg:
+          - "tag_raw: {{ github_release.json.tag_name | default('') }}"
+          - "tag_findall: {{ tag_findall }}"
+
     - name: Normalize latest_version to X.Y.Z (from tag)
       ansible.builtin.set_fact:
         latest_version: >-
-          {{ (github_release.json.tag_name | default('0.0.0'))
+          {{ (github_release.json.tag_name | default(''))
              | regex_replace('^release-', '')
              | regex_replace('^v', '')
-             | regex_replace('(?s).*?([0-9]+\.[0-9]+\.[0-9]+).*', '\\1') }}
+             | regex_findall('([0-9]+\.[0-9]+\.[0-9]+)')
+             | first | default('0.0.0') }}
 
     - name: Extract current_version (X.Y.Z) from command output
       ansible.builtin.set_fact:
         current_version: >-
           {{ (current_qbittorrent_version.stdout | default(''))
-             | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)') is not none
-             and (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
-             or '0.0.0' }}
+             | regex_findall('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')
+             | first | default('0.0.0') }}
 
     - name: Show versions (debug)
       ansible.builtin.debug:
@@ -130,9 +152,8 @@
       ansible.builtin.set_fact:
         downloaded_version: >-
           {{ (new_qbittorrent_version.stdout | default(''))
-             | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)') is not none
-             and (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
-             or '0.0.0' }}
+             | regex_findall('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')
+             | first | default('0.0.0') }}
       when: update_needed and download_result is defined
 
     - name: Stop qBittorrent service (if present)
@@ -165,9 +186,8 @@
       ansible.builtin.set_fact:
         installed_version_number: >-
           {{ (installed_version.stdout | default(''))
-             | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)') is not none
-             and (installed_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
-             or '0.0.0' }}
+             | regex_findall('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')
+             | first | default('0.0.0') }}
       when: update_needed
 
     - name: Start and enable qBittorrent service
