@@ -6,7 +6,8 @@
             "file:///e%3A/github/Scripts/src/Ansible/upgrade_xray.yaml",
             "file:///e%3A/github/Scripts/src/Ansible/reload_nginx.yaml",
             "file:///e%3A/github/Scripts/src/Ansible/restart/restart_api.yaml",
-            "file:///e%3A/github/Scripts/src/Ansible/upgrade/qbittorrent-nox.yaml"
+            "file:///e%3A/github/Scripts/src/Ansible/upgrade/qbittorrent-nox.yaml",
+            "file:///e%3A/github/Scripts/src/Ansible/upgrade/qbittorrent.yaml"
         ]
     }
 }
