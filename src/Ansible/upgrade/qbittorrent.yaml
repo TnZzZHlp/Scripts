@@ -1,4 +1,4 @@
-- name: Upgrade qBittorrent-nox
+- name: Upgrade qBittorrent
   hosts: netcup_de
   vars:
     qbittorrent_temp_dir: "/tmp/qbittorrent-upgrade-{{ ansible_date_time.epoch }}"
@@ -44,13 +44,9 @@
 
     - name: Extract current_version from installed binary
       ansible.builtin.set_fact:
-        # try to extract using regex_replace, then validate with regex_match
         current_version: >-
-          {{ (current_qbittorrent_version.stdout is defined)
-             and ((current_qbittorrent_version.stdout | regex_replace('(?s).*qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+).*', '\\1'))
-                  | regex_match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
-                  and (current_qbittorrent_version.stdout | regex_replace('(?s).*qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+).*', '\\1'))
-                  or '0.0.0')
+          {{ (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')) is not none
+             and (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
              or '0.0.0' }}
       when: current_qbittorrent_version.stdout is defined
 
@@ -152,11 +148,8 @@
     - name: Extract version from downloaded binary for comparison
       ansible.builtin.set_fact:
         downloaded_version: >-
-          {{ (new_qbittorrent_version.stdout is defined)
-             and ((new_qbittorrent_version.stdout | regex_replace('(?s).*qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+).*', '\\1'))
-                  | regex_match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
-                  and (new_qbittorrent_version.stdout | regex_replace('(?s).*qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+).*', '\\1'))
-                  or '0.0.0')
+          {{ (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')) is not none
+             and (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
              or '0.0.0' }}
       when: update_needed
 
@@ -191,11 +184,8 @@
     - name: Extract version from installed binary for comparison
       ansible.builtin.set_fact:
         installed_version_number: >-
-          {{ (installed_version.stdout is defined)
-             and ((installed_version.stdout | regex_replace('(?s).*qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+).*', '\\1'))
-                  | regex_match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
-                  and (installed_version.stdout | regex_replace('(?s).*qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+).*', '\\1'))
-                  or '0.0.0')
+          {{ (installed_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')) is not none
+             and (installed_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
              or '0.0.0' }}
       when: update_needed
 
