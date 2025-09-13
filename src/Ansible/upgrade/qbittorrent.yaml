@@ -77,7 +77,7 @@
       ansible.builtin.debug:
         msg: "Available asset: {{ item.name }} - {{ item.browser_download_url }}"
       loop: "{{ github_release.json.assets }}"
-      loop极trol:
+      loop_control:
         label: "{{ item.name }}"
       when: update_needed
     - name: Find correct asset for current architecture
