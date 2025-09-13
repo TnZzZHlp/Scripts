@@ -49,6 +49,11 @@
           Current version number: {{ current_version }}
           Latest version number: {{ latest_version }}
 
+    - name: Debug version variables
+      ansible.builtin.debug:
+        msg:
+          - "current_version: {{ current_version }} (type: {{ current_version | type_debug }})"
+          - "latest_version: {{ latest_version }} (type: {{ latest_version | type_debug }})"
     - name: Check if update is needed
       ansible.builtin.set_fact:
         update_needed: "{{ (latest_version | string) is version(current_version | string, '>') }}"
