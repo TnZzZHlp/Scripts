@@ -52,7 +52,9 @@
     - name: Check if update is needed
       ansible.builtin.set_fact:
         update_needed: "{{ latest_version is version(current_version, '>') }}"
-        # Debug version comparison
+
+    - name: Debug version comparison
+      ansible.builtin.set_fact:
         debug_versions: |
           Current version: {{ current_version }}
           Latest version: {{ latest_version }}
