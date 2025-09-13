@@ -1,12 +1,17 @@
-- name: Upgrade qBittorrent
+- name: Upgrade qBittorrent-nox
   hosts: netcup_de
   vars:
     qbittorrent_temp_dir: "/tmp/qbittorrent-upgrade-{{ ansible_date_time.epoch }}"
     qbittorrent_binary_path: "/usr/local/bin/qbittorrent-nox"
     qbittorrent_service_name: "qbittorrent"
     github_repo: "userdocs/qbittorrent-nox-static"
+    desired_arch: "x86_64"
 
   tasks:
+    - name: Ensure temp dir variable exists (sanity)
+      ansible.builtin.set_fact:
+        qbittorrent_temp_dir: "{{ qbittorrent_temp_dir }}"
+
     - name: Check if qBittorrent service exists
       ansible.builtin.systemd:
         name: "{{ qbittorrent_service_name }}"
@@ -18,7 +23,7 @@
         path: "{{ qbittorrent_binary_path }}"
       register: qbittorrent_binary_stat
 
-    - name: Get current qBittorrent version
+    - name: Read current qBittorrent version if binary exists
       ansible.builtin.command:
         cmd: "{{ qbittorrent_binary_path }} -v"
       register: current_qbittorrent_version
@@ -28,13 +33,13 @@
 
     - name: Get latest qBittorrent release information from GitHub API
       ansible.builtin.uri:
-        url: https://api.github.com/repos/{{ github_repo }}/releases/latest
+        url: "https://api.github.com/repos/{{ github_repo }}/releases/latest"
         method: GET
         return_content: true
         timeout: 30
       register: github_release
 
-    - name: Set latest_version from GitHub tag (normalize to X.Y.Z)
+    - name: Normalize latest_version to X.Y.Z (from tag)
       ansible.builtin.set_fact:
         latest_version: >-
           {{ (github_release.json.tag_name | default('0.0.0'))
@@ -42,127 +47,102 @@
              | regex_replace('^v', '')
              | regex_replace('(?s).*?([0-9]+\.[0-9]+\.[0-9]+).*', '\\1') }}
 
-    - name: Extract current_version from installed binary
+    - name: Extract current_version (X.Y.Z) from command output
       ansible.builtin.set_fact:
         current_version: >-
-          {{ (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')) is not none
+          {{ (current_qbittorrent_version.stdout | default(''))
+             | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)') is not none
              and (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
              or '0.0.0' }}
-      when: current_qbittorrent_version.stdout is defined
 
-    - name: Set current_version to 0.0.0 if qBittorrent not installed
-      ansible.builtin.set_fact:
-        current_version: "0.0.0"
-      when: current_qbittorrent_version.stdout is not defined
-
-    - name: Display version information
+    - name: Show versions (debug)
       ansible.builtin.debug:
         msg: |
-          Current version: {{ current_qbittorrent_version.stdout | default('Not installed') }}
-          Latest available version: {{ latest_version }}
-          Current version number: {{ current_version }}
-          Latest version number: {{ latest_version }}
+          Binary present: {{ qbittorrent_binary_stat.stat.exists | default(false) }}
+          Raw version output: {{ current_qbittorrent_version.stdout | default('') }}
+          Current version: {{ current_version }}
+          Latest version (normalized): {{ latest_version }}
 
-    - name: Debug version variables
-      ansible.builtin.debug:
-        msg:
-          - "current_version: {{ current_version }} (type: {{ current_version | type_debug }})"
-          - "latest_version: {{ latest_version }} (type: {{ latest_version | type_debug }})"
-    - name: Check if update is needed
+    - name: Decide if update needed
       ansible.builtin.set_fact:
         update_needed: "{{ (latest_version | default('0.0.0')) is version(current_version | default('0.0.0'), '>') }}"
 
-    - name: Debug version comparison
-      ansible.builtin.set_fact:
-        debug_versions: |
-          Current version: {{ current_version }}
-          Latest version: {{ latest_version }}
-          Update needed: {{ update_needed }}
-
-    - name: Display update status
+    - name: Debug decision
       ansible.builtin.debug:
-        msg: |
-          {% if update_needed %}
-          Update needed: Current version {{ current_version }} < Latest version {{ latest_version }}
-          {% else %}
-          No update needed: Current version {{ current_version }} >= Latest version {{ latest_version }}
-          {% endif %}
+        msg: "Update needed: {{ update_needed }}"
 
-    - name: Skip upgrade if no update needed
+    - name: Stop if no update needed
       ansible.builtin.meta: end_play
       when: not update_needed
 
-    - name: Create temporary directory with unique name
+    - name: Create temporary directory
       ansible.builtin.file:
         path: "{{ qbittorrent_temp_dir }}"
         state: directory
         mode: "0700"
       when: update_needed
 
-    - name: Debug available assets
+    - name: Debug available release assets
       ansible.builtin.debug:
-        msg: "Available asset: {{ item.name }} - {{ item.browser_download_url }}"
+        msg: "Found asset: {{ item.name }} -> {{ item.browser_download_url }}"
       loop: "{{ github_release.json.assets }}"
       loop_control:
         label: "{{ item.name }}"
       when: update_needed
-    - name: Find correct asset for current architecture
+
+    - name: Select matching asset for architecture
       ansible.builtin.set_fact:
         target_asset: "{{ item }}"
       loop: "{{ github_release.json.assets }}"
       when:
         - update_needed
-        - "'x86_64' in item.name and 'qbittorrent-nox' in item.name and not 'static' in item.name"
-        - not item.name.endswith('.sha256')
-        - not item.name.endswith('.sha512')
-        - not item.name.endswith('.asc')
+        - "'{{ desired_arch }}' in item.name"
+        - "'qbittorrent-nox' in item.name"
+        - "not 'static' in item.name"
+        - "not item.name.endswith('.sha256')"
+        - "not item.name.endswith('.sha512')"
       loop_control:
         label: "{{ item.name }}"
 
     - name: Fail if no suitable asset found
       ansible.builtin.fail:
-        msg: "No suitable qBittorrent-nox asset found for x86_64 architecture in release {{ latest_version }}"
-      when:
-        - update_needed
-        - target_asset is not defined or target_asset == {}
+        msg: "No suitable qBittorrent asset found for {{ desired_arch }} (release {{ latest_version }})"
+      when: update_needed and (target_asset is not defined or target_asset == {})
 
-    - name: Download latest qBittorrent release
+    - name: Download selected asset
       ansible.builtin.get_url:
         url: "{{ target_asset.browser_download_url }}"
         dest: "{{ qbittorrent_temp_dir }}/qbittorrent-nox"
         mode: "0755"
-        timeout: 60
         validate_certs: true
       register: download_result
-      when:
-        - update_needed
-        - target_asset is defined
+      when: update_needed and target_asset is defined
 
-    - name: Verify downloaded qBittorrent binary
+    - name: Verify downloaded binary version
       ansible.builtin.command:
         cmd: "{{ qbittorrent_temp_dir }}/qbittorrent-nox -v"
       register: new_qbittorrent_version
+      failed_when: false
       changed_when: false
-      when: update_needed
+      when: update_needed and download_result is defined
 
-    - name: Extract version from downloaded binary for comparison
+    - name: Extract downloaded_version
       ansible.builtin.set_fact:
         downloaded_version: >-
-          {{ (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')) is not none
+          {{ (new_qbittorrent_version.stdout | default(''))
+             | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)') is not none
              and (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
              or '0.0.0' }}
-      when: update_needed
+      when: update_needed and download_result is defined
 
-    - name: Stop qBittorrent service before upgrade
+    - name: Stop qBittorrent service (if present)
       ansible.builtin.systemd:
         name: "{{ qbittorrent_service_name }}"
         state: stopped
-      when:
-        - qbittorrent_service_status.status is defined
-        - update_needed
+      when: qbittorrent_service_status is defined and qbittorrent_service_status.status is defined and update_needed
       ignore_errors: true
 
-    - name: Install new qBittorrent binary
+    - name: Install new binary
       ansible.builtin.copy:
         src: "{{ qbittorrent_temp_dir }}/qbittorrent-nox"
         dest: "{{ qbittorrent_binary_path }}"
@@ -170,21 +150,22 @@
         mode: "0755"
         owner: root
         group: root
-
-      when: update_needed
+      when: update_needed and download_result is defined
       notify: restart qbittorrent
 
-    - name: Verify new qBittorrent installation
+    - name: Verify installed binary
       ansible.builtin.command:
         cmd: "{{ qbittorrent_binary_path }} -v"
       register: installed_version
+      failed_when: false
       changed_when: false
       when: update_needed
 
-    - name: Extract version from installed binary for comparison
+    - name: Extract installed_version_number
       ansible.builtin.set_fact:
         installed_version_number: >-
-          {{ (installed_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)')) is not none
+          {{ (installed_version.stdout | default(''))
+             | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)') is not none
              and (installed_version.stdout | regex_search('qBittorrent v([0-9]+\.[0-9]+\.[0-9]+)'))[1]
              or '0.0.0' }}
       when: update_needed
@@ -195,42 +176,36 @@
         state: started
         enabled: true
         daemon_reload: true
-      when:
-        - qbittorrent_service_status.status is defined
-        - update_needed
+      when: qbittorrent_service_status is defined and qbittorrent_service_status.status is defined and update_needed
 
-    - name: Wait for qBittorrent service to be ready
+    - name: Wait for qBittorrent service to become ready
       ansible.builtin.wait_for:
         timeout: 30
-      when:
-        - qbittorrent_service_status.status is defined
-        - update_needed
+      when: qbittorrent_service_status is defined and qbittorrent_service_status.status is defined and update_needed
 
     - name: Verify qBittorrent service status
       ansible.builtin.systemd:
         name: "{{ qbittorrent_service_name }}"
       register: final_service_status
-      when:
-        - qbittorrent_service_status.status is defined
-        - update_needed
+      when: qbittorrent_service_status is defined and qbittorrent_service_status.status is defined and update_needed
 
     - name: Clean up temporary files
       ansible.builtin.file:
         path: "{{ qbittorrent_temp_dir }}"
         state: absent
+      when: update_needed
 
     - name: Display upgrade result
       ansible.builtin.debug:
         msg: |
           {% if update_needed %}
-          qBittorrent upgrade completed successfully!
-          Previous version: {{ current_version }}
-          Installed version: {{ latest_version }}
+          qBittorrent upgrade completed.
+          Previous: {{ current_version }}
+          Downloaded: {{ downloaded_version | default('Unknown') }}
+          Installed: {{ installed_version_number | default('Unknown') }}
           Service status: {{ final_service_status.status.ActiveState | default('Unknown') }}
           {% else %}
-          No upgrade performed - qBittorrent is already up to date!
-          Current version: {{ current_version }}
-          Latest available: {{ latest_version }}
+          No upgrade performed. Current: {{ current_version }}, Latest: {{ latest_version }}
           {% endif %}
 
   handlers:
