@@ -13,13 +13,18 @@
       register: qbittorrent_service_status
       failed_when: false
 
+    - name: Check if qBittorrent binary exists
+      ansible.builtin.stat:
+        path: "{{ qbittorrent_binary_path }}"
+      register: qbittorrent_binary_stat
+
     - name: Get current qBittorrent version
       ansible.builtin.command:
         cmd: "{{ qbittorrent_binary_path }} -v"
       register: current_qbittorrent_version
       failed_when: false
       changed_when: false
-      when: qbittorrent_service_status.status is defined
+      when: qbittorrent_binary_stat.stat.exists | default(false)
 
     - name: Get latest qBittorrent release information from GitHub API
       ansible.builtin.uri:
