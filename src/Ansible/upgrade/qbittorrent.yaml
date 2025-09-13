@@ -56,7 +56,7 @@
           - "latest_version: {{ latest_version }} (type: {{ latest_version | type_debug }})"
     - name: Check if update is needed
       ansible.builtin.set_fact:
-        update_needed: "{{ (latest_version | string) is version(current_version | string, '>') }}"
+        update_needed: "{{ ((latest_version | default('') | string) is version(current_version | default('') | string, '>')) }}"
 
     - name: Debug version comparison
       ansible.builtin.set_fact:
