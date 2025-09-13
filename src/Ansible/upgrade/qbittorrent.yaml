@@ -29,16 +29,21 @@
         timeout: 30
       register: github_release
 
-    - name: Extract version numbers for comparison
+    - name: Set latest_version from GitHub tag (normalize)
       ansible.builtin.set_fact:
-        current_version: "{{ (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)'))[1] | default('0.0.0') }}"
-        latest_version: "{{ github_release.json.tag_name | regex_replace('^release-', '') | regex_replace('_v[0-9]+\\.[0-9]+\\.[0-9]+$', '') }}"
+        latest_version: "{{ (github_release.json.tag_name | default('0.0.0')) | regex_replace('^release-', '') | regex_replace('^v', '') }}"
+
+    - name: Extract current_version from installed binary
+      ansible.builtin.set_fact:
+        current_version: >-
+          {{ (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)')) is not none
+             and (current_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)'))[1]
+             or '0.0.0' }}
       when: current_qbittorrent_version.stdout is defined
 
-    - name: Set current version to 0.0.0 if qBittorrent not installed
+    - name: Set current_version to 0.0.0 if qBittorrent not installed
       ansible.builtin.set_fact:
         current_version: "0.0.0"
-        latest_version: "{{ github_release.json.tag_name | regex_replace('^release-', '') | regex_replace('^v', '') }}"
       when: current_qbittorrent_version.stdout is not defined
 
     - name: Display version information
@@ -56,7 +61,7 @@
           - "latest_version: {{ latest_version }} (type: {{ latest_version | type_debug }})"
     - name: Check if update is needed
       ansible.builtin.set_fact:
-        update_needed: "{{ ((latest_version | default('') | quote) is version(current_version | default('') | quote, '>')) }}"
+        update_needed: "{{ (latest_version | default('0.0.0')) is version(current_version | default('0.0.0'), '>') }}"
 
     - name: Debug version comparison
       ansible.builtin.set_fact:
@@ -133,7 +138,10 @@
 
     - name: Extract version from downloaded binary for comparison
       ansible.builtin.set_fact:
-        downloaded_version: "{{ (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)'))[1] | default('0.0.0') }}"
+        downloaded_version: >-
+          {{ (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)')) is not none
+             and (new_qbittorrent_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)'))[1]
+             or '0.0.0' }}
       when: update_needed
 
     - name: Stop qBittorrent service before upgrade
@@ -166,7 +174,10 @@
 
     - name: Extract version from installed binary for comparison
       ansible.builtin.set_fact:
-        installed_version_number: "{{ (installed_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)'))[1] | default('0.0.0') }}"
+        installed_version_number: >-
+          {{ (installed_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)')) is not none
+             and (installed_version.stdout | regex_search('qBittorrent v([0-9]+\\.[0-9]+\\.[0-9]+)'))[1]
+             or '0.0.0' }}
       when: update_needed
 
     - name: Start and enable qBittorrent service
