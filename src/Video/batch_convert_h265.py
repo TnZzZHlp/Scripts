@@ -794,16 +794,16 @@ def main():
                 except Exception as e:
                     print(f"删除源文件失败: {e}")
         else:
-            print(f"错误: FFmpeg 转码失败 (退出码: {ret})")
+            print(f"错误: FFmpeg 转码失败 (退出码: {ret}) -> 跳过此文件并继续处理")
             print("=" * 80)
-            print("错误的 FFmpeg 命令:")
+            print("失败的 FFmpeg 命令:")
             print(" ".join(cmd))
             print("=" * 80)
             print("完整错误输出:")
             print(output)
             print("=" * 80)
-            print("由于 FFmpeg 出现错误，停止后续处理")
-            return 1  # 立即退出，不继续处理其他文件
+            # 跳过当前文件并继续下一个
+            continue
     print("=" * 80)
     print(f"完成: {success}/{len(tasks)} 成功")
     return 0 if success == len(tasks) else 2
