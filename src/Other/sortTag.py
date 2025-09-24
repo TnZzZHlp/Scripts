@@ -125,8 +125,8 @@ def sort_tags_from_file(file_path):
         if not first_group:
             print("")
         print(group_letter)
-        for i in range(0, len(tag_list), 6):
-            print(" | ".join(tag_list[i : i + 6]))
+        for i in range(0, len(tag_list), 3):
+            print(" | ".join(tag_list[i : i + 3]))
         first_group = False
 
 
