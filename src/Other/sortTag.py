@@ -82,10 +82,17 @@ def sort_tags_from_file(file_path):
         first_char = cleaned_tag_content[0]
         letter = "#"
         if "\u4e00" <= first_char <= "\u9fff":
-            from pypinyin import pinyin, Style
+            # 特殊多音字优先
+            special_chars = {
+                "长": "c",  # 长沙的长读作cháng
+            }
+            if first_char in special_chars:
+                letter = special_chars[first_char].upper()
+            else:
+                from pypinyin import pinyin, Style
 
-            py = pinyin(first_char, style=Style.NORMAL, errors="default")[0][0]
-            letter = py[0].upper() if py else "#"
+                py = pinyin(first_char, style=Style.NORMAL, errors="default")[0][0]
+                letter = py[0].upper() if py else "#"
         elif ("\u3040" <= first_char <= "\u309f") or (
             "\u30a0" <= first_char <= "\u30ff"
         ):
