@@ -177,6 +177,12 @@ wheels = [
 ]
 
 [[package]]
+name = "jaconv"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/e1/670cefc7f00b0e1890e114a37a98ea425f7e06131342aeb9636856ac663c/jaconv-0.4.0.tar.gz", hash = "sha256:32da74b247f276e09a52d6b35c153df2387965cb85a6f034cc8af21d446f8161", size = 17402, upload-time = "2024-07-25T16:35:24.75Z" }
+
+[[package]]
 name = "multidict"
 version = "6.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -360,6 +366,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "beautifulsoup4" },
+    { name = "jaconv" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pypinyin" },
@@ -372,6 +379,7 @@ dependencies = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.12" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
+    { name = "jaconv", specifier = ">=0.4.0" },
     { name = "numpy", specifier = ">=2.3.2" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "pypinyin", specifier = ">=0.54.0" },
