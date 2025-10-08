@@ -682,8 +682,8 @@ def main():
     parser.add_argument(
         "--max-size",
         type=int,
-        default=1900,
-        help="输出文件最大大小限制(MB)，默认1900MB(约1.9GB)，设为0禁用",
+        default=1800,
+        help="输出文件最大大小限制(MB)，默认1800MB(约1.8GB)，设为0禁用",
     )
     parser.add_argument(
         "--two-pass",
