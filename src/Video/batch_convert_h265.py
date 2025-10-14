@@ -481,19 +481,15 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
                         ]
                     )
                 else:
-                    # 单遍VBR编码
+                    # 单遍VBR编码 - 使用 average bitrate (ABR) 模式确保完整编码
                     base.extend(
                         [
                             "-c:v",
                             "hevc_amf",
                             "-rc",
-                            "vbr_peak",
+                            "vbr_latency",
                             "-b:v",
                             f"{target_bitrate}k",
-                            "-maxrate",
-                            f"{int(target_bitrate * 1.1)}k",
-                            "-bufsize",
-                            f"{int(target_bitrate * 1.5)}k",
                             "-quality",
                             options.quality,
                         ]
