@@ -451,17 +451,31 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
             if duration:
                 # 获取原始码率
                 source_bitrate = probe_video_bitrate(task.src)
+
+                # 检查原视频大小是否小于目标大小
+                source_size_mb = task.size / (1024 * 1024)
+                effective_target_size_mb = options.max_size_mb
+
+                if source_size_mb < options.max_size_mb:
+                    if source_bitrate is None:
+                        # 原视频更小且无法获取码率,使用原视频大小作为上限
+                        effective_target_size_mb = int(source_size_mb)
+                        print(
+                            f"  原视频大小({source_size_mb:.1f}MB) < 目标大小({options.max_size_mb}MB), 且无法获取原始码率"
+                        )
+                        print(f"  调整目标大小为: {effective_target_size_mb}MB")
+
                 target_bitrate = calculate_target_bitrate(
-                    duration, options.max_size_mb, source_bitrate
+                    duration, effective_target_size_mb, source_bitrate
                 )
 
                 if source_bitrate:
                     print(
-                        f"  原始码率: {source_bitrate}kbps, 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {options.max_size_mb}MB)"
+                        f"  原始码率: {source_bitrate}kbps, 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB)"
                     )
                 else:
                     print(
-                        f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {options.max_size_mb}MB, 无法获取原始码率)"
+                        f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB, 无法获取原始码率)"
                     )
 
                 if options.two_pass:
