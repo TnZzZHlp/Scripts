@@ -798,11 +798,14 @@ def main():
                     print(f"文件大小: {human_size(output_size)} (在限制内)")
 
             if args.delete_source:
-                try:
-                    os.remove(task.src)
-                    print(f"已删除源文件: {task.src}")
-                except Exception as e:
-                    print(f"删除源文件失败: {e}")
+                if is_valid_video(task.dst, task.src):
+                    try:
+                        os.remove(task.src)
+                        print(f"已删除源文件: {task.src}")
+                    except Exception as e:
+                        print(f"删除源文件失败: {e}")
+                else:
+                    print("跳过删除源文件: 转码结果时长不匹配或验证失败")
         else:
             print(f"错误: FFmpeg 转码失败 (退出码: {ret}) -> 跳过此文件并继续处理")
             print("=" * 80)
