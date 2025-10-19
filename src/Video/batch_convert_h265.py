@@ -358,7 +358,7 @@ def is_valid_video(target_path: str, source_path: str | None = None) -> bool:
             # 无法验证时长则视为无效, 以便重新处理
             return False
 
-        DURATION_TOLERANCE = 1.0  # 秒
+        DURATION_TOLERANCE = 10.0  # 秒
         if abs(src_dur - tgt_dur) <= DURATION_TOLERANCE:
             return True
         return False
