@@ -56,6 +56,7 @@ DEFAULT_EXTS = [
     ".ts",
     ".m4v",
     ".wmv",
+    ".ogm",
 ]
 
 # 可调整的默认扫描扩展
@@ -413,117 +414,135 @@ def collect_tasks(root: str, exts: Iterable[str], overwrite: bool) -> List[Task]
     return tasks
 
 
-def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
-    """根据任务类型构建命令:
+def build_ffmpeg_cmd(
+    task: "Task",
+    options: "EncodeOptions",
+    encoder: str = "hevc_amf",
+    drop_corrupt_duration: float | None = None,
+) -> List[str]:
+    """根据任务类型构建命令.
+
     remux: 视频/音频 copy -> mp4 (丢字幕)
-    transcode: 视频 hevc_amf, 音频处理 -> mp4 (丢字幕)
+    transcode: 根据 encoder 选择 hevc_amf 或 libx265
     """
-    # 检查音频是否需要重新编码
     has_incompatible_audio = has_mp4_incompatible_audio(task.src)
 
-    base = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        task.src,
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-sn",
-        "-movflags",
-        "+faststart",
-    ]
+    base: List[str] = ["ffmpeg", "-y"]
 
-    # 音频处理：如果有不兼容音频则转为AAC，否则copy
+    if task.src_ext in {".ogm", ".ogg"}:
+        print("  检测到 OGG/OGM 输入，启用容错读取参数")
+        base.extend(
+            [
+                "-fflags",
+                "+genpts+discardcorrupt",
+                "-err_detect",
+                "ignore_err",
+                "-max_interleave_delta",
+                "0",
+            ]
+        )
+
+    base.extend(
+        [
+            "-analyzeduration",
+            "100M",
+            "-probesize",
+            "100M",
+            "-i",
+            task.src,
+        ]
+    )
+
+    if drop_corrupt_duration is not None:
+        base.extend(["-t", f"{drop_corrupt_duration:.3f}"])
+
+    base.extend(
+        [
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-sn",
+            "-movflags",
+            "+faststart",
+        ]
+    )
+
     if has_incompatible_audio:
-        print(f"  检测到不兼容音频编码，将转换为AAC")
+        print("  检测到不兼容音频编码，将转换为AAC")
         base.extend(["-c:a", "aac", "-b:a", "128k"])
     else:
         base.extend(["-c:a", "copy"])
 
     if task.action == "remux":
         base.extend(["-c:v", "copy"])
-    else:  # transcode
-        # 如果设置了文件大小限制，使用码率控制而不是CQP
-        if options.max_size_mb:
-            duration = probe_video_duration(task.src)
-            if duration:
-                # 获取原始码率
-                source_bitrate = probe_video_bitrate(task.src)
+        base.append(task.dst)
+        return base
 
-                # 检查原视频大小是否小于目标大小
-                source_size_mb = task.size / (1024 * 1024)
-                effective_target_size_mb = options.max_size_mb
+    encoder = encoder.lower()
+    duration: float | None = None
+    source_bitrate: int | None = None
+    effective_target_size_mb = options.max_size_mb
 
-                if source_size_mb < options.max_size_mb:
-                    if source_bitrate is None:
-                        # 原视频更小且无法获取码率,使用原视频大小作为上限
-                        effective_target_size_mb = int(source_size_mb)
-                        print(
-                            f"  原视频大小({source_size_mb:.1f}MB) < 目标大小({options.max_size_mb}MB), 且无法获取原始码率"
-                        )
-                        print(f"  调整目标大小为: {effective_target_size_mb}MB")
+    if options.max_size_mb:
+        duration = probe_video_duration(task.src)
+        if duration:
+            source_bitrate = probe_video_bitrate(task.src)
+            source_size_mb = task.size / (1024 * 1024)
+            if source_size_mb < options.max_size_mb and source_bitrate is None:
+                effective_target_size_mb = max(1, int(source_size_mb))
+                print(
+                    f"  原视频大小({source_size_mb:.1f}MB) < 目标大小({options.max_size_mb}MB), 且无法获取原始码率"
+                )
+                print(f"  调整目标大小为: {effective_target_size_mb}MB")
+        else:
+            print("  警告: 无法获取视频时长，使用CQP/CRF模式")
+            effective_target_size_mb = None
 
-                target_bitrate = calculate_target_bitrate(
-                    duration, effective_target_size_mb, source_bitrate
+    if encoder == "hevc_amf":
+        if effective_target_size_mb and duration:
+            target_bitrate = calculate_target_bitrate(
+                duration, effective_target_size_mb, source_bitrate
+            )
+
+            if source_bitrate:
+                print(
+                    f"  原始码率: {source_bitrate}kbps, 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB)"
+                )
+            else:
+                print(
+                    f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB, 无法获取原始码率)"
                 )
 
-                if source_bitrate:
-                    print(
-                        f"  原始码率: {source_bitrate}kbps, 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB)"
-                    )
-                else:
-                    print(
-                        f"  目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB, 无法获取原始码率)"
-                    )
-
-                if options.two_pass:
-                    # 两遍编码模式 - 这里只返回第一遍命令，第二遍需要单独处理
-                    base.extend(
-                        [
-                            "-c:v",
-                            "hevc_amf",
-                            "-rc",
-                            "vbr_peak",
-                            "-b:v",
-                            f"{target_bitrate}k",
-                            "-maxrate",
-                            f"{int(target_bitrate * 1.2)}k",
-                            "-bufsize",
-                            f"{int(target_bitrate * 2)}k",
-                        ]
-                    )
-                else:
-                    # 单遍VBR编码 - 使用 average bitrate (ABR) 模式确保完整编码
-                    base.extend(
-                        [
-                            "-c:v",
-                            "hevc_amf",
-                            "-rc",
-                            "vbr_latency",
-                            "-b:v",
-                            f"{target_bitrate}k",
-                            "-quality",
-                            options.quality,
-                        ]
-                    )
-            else:
-                print("  警告: 无法获取视频时长，使用CQP模式")
+            if options.two_pass:
                 base.extend(
                     [
                         "-c:v",
                         "hevc_amf",
                         "-rc",
-                        "cqp",
-                        "-qp",
-                        str(options.qp),
+                        "vbr_peak",
+                        "-b:v",
+                        f"{target_bitrate}k",
+                        "-maxrate",
+                        f"{int(target_bitrate * 1.2)}k",
+                        "-bufsize",
+                        f"{int(target_bitrate * 2)}k",
+                    ]
+                )
+            else:
+                base.extend(
+                    [
+                        "-c:v",
+                        "hevc_amf",
+                        "-rc",
+                        "vbr_latency",
+                        "-b:v",
+                        f"{target_bitrate}k",
                         "-quality",
                         options.quality,
                     ]
                 )
         else:
-            # 原有的CQP模式
             base.extend(
                 [
                     "-c:v",
@@ -537,7 +556,6 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
                 ]
             )
 
-        # 添加其他编码参数
         if options.usage:
             base.extend(["-usage", options.usage])
         if options.profile:
@@ -564,6 +582,39 @@ def build_ffmpeg_cmd(task: "Task", options: "EncodeOptions") -> List[str]:
             base.extend(["-me_half_pel", "true"])
         if options.me_quarter_pel:
             base.extend(["-me_quarter_pel", "true"])
+    elif encoder == "libx265":
+        preset_map = {"speed": "faster", "balanced": "medium", "quality": "slow"}
+        preset = preset_map.get(options.quality, "medium")
+
+        base.extend(["-c:v", "libx265", "-preset", preset])
+
+        if effective_target_size_mb and duration:
+            target_bitrate = calculate_target_bitrate(
+                duration, effective_target_size_mb, source_bitrate
+            )
+            if source_bitrate:
+                print(
+                    f"  [libx265] 原始码率: {source_bitrate}kbps, 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB)"
+                )
+            else:
+                print(
+                    f"  [libx265] 目标码率: {target_bitrate}kbps (时长: {duration:.1f}s, 目标大小: {effective_target_size_mb}MB, 无法获取原始码率)"
+                )
+
+            base.extend(
+                [
+                    "-b:v",
+                    f"{target_bitrate}k",
+                    "-maxrate",
+                    f"{int(target_bitrate * 1.2)}k",
+                    "-bufsize",
+                    f"{int(target_bitrate * 2)}k",
+                ]
+            )
+        else:
+            base.extend(["-crf", str(options.qp)])
+    else:
+        raise ValueError(f"未知编码器: {encoder}")
 
     base.append(task.dst)
     return base
@@ -696,6 +747,11 @@ def main():
         help="输出文件最大大小限制(MB)，默认1800MB(约1.8GB)，设为0禁用",
     )
     parser.add_argument(
+        "--force-libx265",
+        action="store_true",
+        help="强制使用软件编码 libx265 (跳过 hevc_amf)",
+    )
+    parser.add_argument(
         "--two-pass",
         action="store_true",
         help="启用两遍编码以更精确控制文件大小(仅在设置max-size时有效)",
@@ -774,49 +830,134 @@ def main():
         print("=" * 80)
         print(f"[{idx}/{len(tasks)}] 转码: {task.src}")
         print(f"大小: {human_size(task.size)}")
-        cmd = build_ffmpeg_cmd(task, options)
 
-        # 显示将要执行的命令
-        print(f"执行命令: {' '.join(cmd)}")
+        encoders_to_try: List[str] = []
+        if task.action == "transcode":
+            if args.force_libx265:
+                encoders_to_try.append("libx265")
+            else:
+                encoders_to_try.extend(["hevc_amf", "libx265"])
+        else:
+            encoders_to_try.append("hevc_amf")
 
-        ret, output = run_cmd(cmd)
-        if ret == 0 and os.path.exists(task.dst):
+        if not encoders_to_try:
+            encoders_to_try.append("hevc_amf")
+
+        task_success = False
+        last_output: str = ""
+        last_cmd: List[str] = []
+
+        trim_durations: dict[int, float] = {}
+        attempt_idx = 0
+        while attempt_idx < len(encoders_to_try):
+            encoder = encoders_to_try[attempt_idx]
+            drop_corrupt = trim_durations.get(attempt_idx)
+
+            if (
+                task.action == "transcode"
+                and encoder == "libx265"
+                and not args.force_libx265
+            ):
+                print("检测到硬件转码失败或输出无效，尝试使用软件编码 libx265 ...")
+
+            if drop_corrupt is not None:
+                print(f"  本次尝试仅保留前 {drop_corrupt:.1f}s 以绕过疑似损坏片段")
+
+            cmd = build_ffmpeg_cmd(
+                task,
+                options,
+                encoder=encoder,
+                drop_corrupt_duration=drop_corrupt,
+            )
+            last_cmd = cmd
+
+            print(f"执行命令: {' '.join(cmd)}")
+
+            ret, output = run_cmd(cmd)
+            last_output = output
+
+            if ret != 0 or not os.path.exists(task.dst):
+                print(f"错误: 使用 {encoder} 编码失败 (退出码: {ret})")
+                if os.path.exists(task.dst):
+                    try:
+                        os.remove(task.dst)
+                    except Exception:
+                        pass
+                if attempt_idx == len(encoders_to_try) - 1:
+                    print("=" * 80)
+                    print("失败的 FFmpeg 命令:")
+                    print(" ".join(cmd))
+                    print("=" * 80)
+                    print("完整错误输出:")
+                    print(output)
+                    print("=" * 80)
+                else:
+                    print("  将尝试其它编码器...")
+                attempt_idx += 1
+                continue
+
+            if not is_valid_video(task.dst, task.src):
+                print("警告: 输出文件验证失败 (时长不匹配或无法读取) -> 判定为失败")
+                try:
+                    os.remove(task.dst)
+                except Exception:
+                    pass
+
+                if drop_corrupt is None:
+                    duration = probe_video_duration(task.src)
+                    if duration and duration > 1.0:
+                        trim_durations[attempt_idx] = max(duration - 1.0, 0.0)
+                        print(
+                            f"  将尝试裁剪至 {trim_durations[attempt_idx]:.1f}s 重新编码以跳过损坏尾部..."
+                        )
+                        continue
+
+                if attempt_idx == len(encoders_to_try) - 1:
+                    print("=" * 80)
+                    print("失败的 FFmpeg 命令:")
+                    print(" ".join(cmd))
+                    print("=" * 80)
+                    print("完整错误输出:")
+                    print(output)
+                    print("=" * 80)
+                else:
+                    print("  将尝试其它编码器...")
+                attempt_idx += 1
+                continue
+
+            task_success = True
             output_size = os.path.getsize(task.dst)
-            success += 1
             ratio = output_size / task.size
             print(f"完成 -> 压缩比: {ratio:.2%}")
 
-            # 检查文件大小是否超出限制
             if options.max_size_mb:
                 max_size_bytes = options.max_size_mb * 1024 * 1024
                 if output_size > max_size_bytes:
                     print(
                         f"警告: 输出文件 {human_size(output_size)} 超过限制 {options.max_size_mb}MB"
                     )
-                    # 可以选择重新编码或调整参数
                 else:
                     print(f"文件大小: {human_size(output_size)} (在限制内)")
 
             if args.delete_source:
-                if is_valid_video(task.dst, task.src):
-                    try:
-                        os.remove(task.src)
-                        print(f"已删除源文件: {task.src}")
-                    except Exception as e:
-                        print(f"删除源文件失败: {e}")
-                else:
-                    print("跳过删除源文件: 转码结果时长不匹配或验证失败")
+                try:
+                    os.remove(task.src)
+                    print(f"已删除源文件: {task.src}")
+                except Exception as e:
+                    print(f"删除源文件失败: {e}")
+
+            break
+
+        if task_success:
+            success += 1
         else:
-            print(f"错误: FFmpeg 转码失败 (退出码: {ret}) -> 跳过此文件并继续处理")
-            print("=" * 80)
-            print("失败的 FFmpeg 命令:")
-            print(" ".join(cmd))
-            print("=" * 80)
-            print("完整错误输出:")
-            print(output)
-            print("=" * 80)
-            # 跳过当前文件并继续下一个
-            continue
+            print("跳过该文件: 所有可用编码器均失败")
+            if last_cmd:
+                print("最终尝试的命令:")
+                print(" ".join(last_cmd))
+            if last_output:
+                print("完整错误输出:")
+                print(last_output)
     print("=" * 80)
     print(f"完成: {success}/{len(tasks)} 成功")
     return 0 if success == len(tasks) else 2
